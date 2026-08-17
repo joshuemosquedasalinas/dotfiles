@@ -4,7 +4,7 @@ Personal Neovim + WezTerm config. Cross-platform (Linux + macOS).
 
 ## Install on a new machine
 
-git clone https://github.com/YOUR_USERNAME/dotfiles.git ~/dotfiles
+git clone https://github.com/YOUR_USERNAME/dotfiles.git ~/dotfile
 cd ~/dotfiles
 ./install.sh
 
