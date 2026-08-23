@@ -1,6 +1,7 @@
 local wezterm = require("wezterm")
 local config = wezterm.config_builder()
 
+config.front_end = "OpenGL"
 config.color_scheme = "rose-pine-moon"
 config.font = wezterm.font("CommitMono Nerd Font")
 config.font_size = 12.0
@@ -8,6 +9,7 @@ config.line_height = 1.1
 config.window_background_opacity = 0.5
 config.window_close_confirmation = "NeverPrompt"
 config.window_decorations = "TITLE | RESIZE"
+config.enable_wayland = false
 config.window_padding = { left = 8, right = 8, top = 8, bottom = 8 }
 config.enable_tab_bar = true
 config.show_tabs_in_tab_bar = false
@@ -20,13 +22,18 @@ config.scrollback_lines = 10000
 config.default_cursor_style = "BlinkingBar"
 config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
 config.inactive_pane_hsb = { saturation = 0.7, brightness = 0.3 }
-config.colors = { background = "#16161a", split = "#363636" }
+config.colors = {
+  background = "#16161a",
+  split = "#363636",
+  tab_bar = { background = "rgba(0,0,0,0)" },
+}
 
-local IMAGE_DIR       = "/home/joshuemosquedasalinas/Pictures/Terminal"
-local SHUFFLE_SECONDS = 600  
-local TINT_COLOR      = "#16161a"
-local TINT_OPACITY    = 0.55  
-local IMAGE_BRIGHTNESS = 0.5  
+local IMAGE_DIR        = wezterm.home_dir .. "/Pictures/Terminal"
+local SHUFFLE_SECONDS  = 120    
+local START_WITH_IMAGE = true   
+local IMAGE_OPACITY    = 0.50   
+local IMAGE_BRIGHTNESS = 0.15   
+local HISTORY_MAX      = 200    
 
 math.randomseed(os.time())
 
@@ -45,47 +52,85 @@ local function list_images()
   return imgs
 end
 
-wezterm.GLOBAL.bg_images     = list_images()
-wezterm.GLOBAL.current_image = wezterm.GLOBAL.current_image
-  or wezterm.GLOBAL.bg_images[1]
-wezterm.GLOBAL.next_shuffle  = wezterm.GLOBAL.next_shuffle
-  or (os.time() + SHUFFLE_SECONDS)
+wezterm.GLOBAL.bg_images = list_images()
 
-local function bg_solid()
+if wezterm.GLOBAL.bg_history == nil then
+  local hist = {}
+  local imgs = wezterm.GLOBAL.bg_images
+  if #imgs > 0 then table.insert(hist, imgs[math.random(#imgs)]) end
+  wezterm.GLOBAL.bg_history = hist
+  wezterm.GLOBAL.bg_pos = 1
+end
+
+wezterm.GLOBAL.next_shuffle = wezterm.GLOBAL.next_shuffle or (os.time() + SHUFFLE_SECONDS)
+if wezterm.GLOBAL.bg_on == nil then wezterm.GLOBAL.bg_on = START_WITH_IMAGE end
+
+local function current_image()
+  local hist = wezterm.GLOBAL.bg_history or {}
+  return hist[wezterm.GLOBAL.bg_pos or 1]
+end
+
+local function image_layers()
+  local img = current_image()
+  if not img then return nil end
   return {
-    { source = { Color = TINT_COLOR }, width = "100%", height = "100%" },
+    {
+      source  = { File = img },
+      opacity = IMAGE_OPACITY,
+      hsb     = { brightness = IMAGE_BRIGHTNESS },
+    },
   }
 end
 
-local function bg_image()
-  local img = wezterm.GLOBAL.current_image
-  if not img then return bg_solid() end  
-  return {
-    {
-      source = { File = img },
-      hsb = { brightness = IMAGE_BRIGHTNESS },
-    },
-    {
-      source = { Color = TINT_COLOR },
-      width = "100%",  
-      height = "100%",
-      opacity = TINT_OPACITY,
-    },
-  }
-end
-
-local function pick_next_image()
-  local imgs = wezterm.GLOBAL.bg_images or {}
-  if #imgs == 0 then return end
-  if #imgs == 1 then wezterm.GLOBAL.current_image = imgs[1]; return end
-  local choice = wezterm.GLOBAL.current_image
-  while choice == wezterm.GLOBAL.current_image do
-    choice = imgs[math.random(#imgs)]
+local function apply_bg(window)
+  local overrides = window:get_config_overrides() or {}
+  if wezterm.GLOBAL.bg_on then
+    overrides.background = image_layers()
+  else
+    overrides.background = nil
   end
-  wezterm.GLOBAL.current_image = choice
+  window:set_config_overrides(overrides)
 end
 
-config.background = bg_image()   
+local function forward(window)
+  local imgs_proxy = wezterm.GLOBAL.bg_images or {}
+  local imgs = {}
+  for _, v in ipairs(imgs_proxy) do table.insert(imgs, v) end
+  if #imgs == 0 then return end
+  local hist_proxy = wezterm.GLOBAL.bg_history or {}
+  local hist = {}
+  for _, v in ipairs(hist_proxy) do table.insert(hist, v) end
+  local pos = wezterm.GLOBAL.bg_pos or 1
+  if pos < #hist then
+    wezterm.GLOBAL.bg_pos = pos + 1
+  else
+    local cur = hist[pos]
+    local choice
+    if #imgs == 1 then
+      choice = imgs[1]
+    else
+      repeat choice = imgs[math.random(#imgs)] until choice ~= cur
+    end
+    table.insert(hist, choice)
+    if #hist > HISTORY_MAX then table.remove(hist, 1) end
+    wezterm.GLOBAL.bg_pos = #hist
+  end
+  
+  wezterm.GLOBAL.bg_history = hist
+  wezterm.GLOBAL.bg_on = true
+  wezterm.GLOBAL.next_shuffle = os.time() + SHUFFLE_SECONDS
+  apply_bg(window)
+end
+
+local function back(window)
+  local pos = wezterm.GLOBAL.bg_pos or 1
+  if pos > 1 then
+    wezterm.GLOBAL.bg_pos = pos - 1
+    wezterm.GLOBAL.bg_on = true
+    wezterm.GLOBAL.next_shuffle = os.time() + SHUFFLE_SECONDS
+    apply_bg(window)
+  end
+end
 
 config.keys = {
   { key = "[", mods = "LEADER", action = wezterm.action.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
@@ -99,60 +144,65 @@ config.keys = {
   { key = "UpArrow", mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Up") },
   { key = "RightArrow", mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Right") },
   { key = "x", mods = "LEADER", action = wezterm.action.CloseCurrentPane({ confirm = true }) },
+  -- Browse background images: LEADER n = next (random), LEADER b = back (exact)
+  { key = "n", mods = "LEADER", action = wezterm.action_callback(function(win) forward(win) end) },
+  { key = "b", mods = "LEADER", action = wezterm.action_callback(function(win) back(win) end) },
 }
 
 wezterm.on("format-window-title", function() return "" end)
 
 wezterm.on("update-status", function(window, pane)
-  if wezterm.GLOBAL.bg_off then return end           
-  if os.time() < (wezterm.GLOBAL.next_shuffle or 0) then return end
-  pick_next_image()
-  wezterm.GLOBAL.next_shuffle = os.time() + SHUFFLE_SECONDS
-  local overrides = window:get_config_overrides() or {}
-  overrides.background = bg_image()
-  window:set_config_overrides(overrides)
-end)
-
-wezterm.on("user-var-changed", function(window, pane, name, value)
-  if name ~= "wezbg" then return end
-  if value == "toggle" then
-    wezterm.GLOBAL.bg_off = not wezterm.GLOBAL.bg_off
-    value = wezterm.GLOBAL.bg_off and "solid" or "image"
-  elseif value == "next" then
-    pick_next_image()
-    wezterm.GLOBAL.next_shuffle = os.time() + SHUFFLE_SECONDS
-    value = "image"
+  if not wezterm.GLOBAL.started then
+    wezterm.GLOBAL.started = true
+    apply_bg(window)
   end
-  local overrides = window:get_config_overrides() or {}
-  if value == "solid" then
-    wezterm.GLOBAL.bg_off = true
-    overrides.background = bg_solid()
-  else
-    wezterm.GLOBAL.bg_off = false
-    overrides.background = bg_image()
+  if wezterm.GLOBAL.bg_on and SHUFFLE_SECONDS > 0
+    and os.time() >= (wezterm.GLOBAL.next_shuffle or 0) then
+    forward(window)
   end
-  window:set_config_overrides(overrides)
 end)
 
 wezterm.on("update-status", function(window, pane)
-  local c = { pine = "#3e8fb0", iris = "#c4a7e7", muted = "#6e6a86" }
-  local leader = ""
-  if window:leader_is_active() then
-    leader = wezterm.format({
-      { Foreground = { Color = c.iris } },
-      { Text = " " .. wezterm.nerdfonts.oct_rocket .. " LEADER " },
-    })
+  if not wezterm.GLOBAL.started then
+    wezterm.GLOBAL.started = true
+    apply_bg(window)
   end
-  window:set_left_status(leader)
+  
+  if wezterm.GLOBAL.bg_on and SHUFFLE_SECONDS > 0
+    and os.time() >= (wezterm.GLOBAL.next_shuffle or 0) then
+    forward(window)
+  end
+
+  local c = { pine = "#3e8fb0", iris = "#c4a7e7", muted = "#6e6a86", bar = "#16161a" }
+  local leader = ""
+  
+  if window:leader_is_active() then
+    leader = " " .. wezterm.nerdfonts.oct_rocket .. " LEADER "
+  end
+  
+  window:set_left_status(wezterm.format({
+    { Background = { Color = "rgba(0,0,0,0)" } },
+    { Foreground = { Color = c.iris } },
+    { Text = leader },
+  }))
+  
   local dir = "~"
   local cwd = pane:get_current_working_dir()
-  if cwd then dir = (cwd.file_path or ""):gsub("/+$", ""):match("([^/]+)$") or "/" end
+  if cwd then 
+    dir = (cwd.file_path or ""):gsub("/+$", ""):match("([^/]+)$") or "/" 
+  end
+  
   window:set_right_status(wezterm.format({
-    { Foreground = { Color = c.pine } },
+    { Background = { Color =  "rgba(0,0,0,0)" } },
+    { Foreground = { Color = c.iris } },
     { Text = wezterm.nerdfonts.cod_folder .. " " .. dir .. "   " },
-    { Foreground = { Color = c.muted } },
+    { Foreground = { Color = c.iris } },
     { Text = wezterm.strftime("%H:%M ") },
   }))
+end)
+
+wezterm.on("window-resized", function(window, pane)
+  apply_bg(window)
 end)
 
 return config
