@@ -1,25 +1,35 @@
---  WezTerm config — cross-platform (macOS + Linux)
+-- WezTerm config cross-platform (macOS + Linux)
 local wezterm = require("wezterm")
 local config = wezterm.config_builder()
 local is_mac = wezterm.target_triple:find("darwin") ~= nil
-
--- Renderer 
 config.front_end = is_mac and "WebGpu" or "OpenGL"
 if not is_mac then
   config.enable_wayland = false
 end
+config.ssh_domains = {
+  {
+    name = "pop-os",
+    remote_address = "pop-os",
+    username = "joshuemosquedasalinas",
+  },
+}
 
 -- Appearance
 config.color_scheme = "rose-pine-moon"
 config.font = wezterm.font("CommitMono Nerd Font")
-config.font_size = is_mac and 13.0 or 12.0 -- Retina wants a touch larger
+config.font_size = is_mac and 13.0 or 12.0
 config.line_height = 1.1
 config.window_background_opacity = 0.5
 config.window_decorations = is_mac and "INTEGRATED_BUTTONS | RESIZE" or "RESIZE"
+config.inactive_pane_hsb = { saturation = 0.7, brightness = 0.3 }
+config.default_cursor_style = "BlinkingBar"
+config.adjust_window_size_when_changing_font_size = false
+config.initial_cols = 120
+config.initial_rows = 72
 config.window_padding = {
   left = 8,
   right = 8,
-  top = is_mac and 36 or 8,
+  top = is_mac and 52 or 8,
   bottom = 8,
 }
 config.colors = {
@@ -27,8 +37,6 @@ config.colors = {
   split = "#363636",
   tab_bar = { background = "rgba(0,0,0,0)" },
 }
-config.inactive_pane_hsb = { saturation = 0.7, brightness = 0.3 }
-config.default_cursor_style = "BlinkingBar"
 
 -- Tab bar (kept minimal / hidden chrome) 
 config.enable_tab_bar = true
@@ -43,9 +51,7 @@ config.max_fps = 120
 config.enable_kitty_graphics = true
 config.scrollback_lines = 10000
 
---  Background image shuffler
---  Cycles through images in ~/dotfiles/backgrounds on a timer.
---  LEADER n = next (random), LEADER b = back (through history).
+-- Background image shuffler | LEADER n = next (random), LEADER b = back (through history).
 local IMAGE_DIR        = wezterm.home_dir .. "/dotfiles/backgrounds"
 local SHUFFLE_SECONDS  = 120   -- auto-advance interval (0 = never)
 local START_WITH_IMAGE = true
@@ -175,6 +181,12 @@ config.keys = {
   -- Background image: n = next (random), b = back (history)
   { key = "n", mods = "LEADER", action = wezterm.action_callback(function(win) forward(win) end) },
   { key = "b", mods = "LEADER", action = wezterm.action_callback(function(win) back(win) end) },
+  -- LEADER s → split a new pane SSH'd into pop-os
+  { key = "s", mods = "LEADER", action = wezterm.action.SplitPane({
+    direction = "Down",
+    size = { Percent = 40 },
+    command = { domain = { DomainName = "pop-os" } },
+  }) },
 }
 
 --  Status bar + hooks
@@ -236,7 +248,7 @@ wezterm.on("update-status", function(window, pane)
     wezterm.GLOBAL.branch_cache = git_branch(cwd0 and cwd0.file_path or nil)
   end
 
-  local c = { iris = "#c4a7e7", pine = "#3e8fb0", gold = "#f6c177", muted = "#6e6a86" }
+  local c = { iris = "#909090", pine = "#909090", gold = "#909090", muted = "#909090" }
 
   -- Left: LEADER indicator when the leader key is armed
   local leader = ""
@@ -289,7 +301,7 @@ wezterm.on("update-status", function(window, pane)
   window:set_right_status(wezterm.format(cells))
 end)
 
-wezterm.on("window-resized", function(window, pane)
+wezterm.on("window-resized", function(window)
   apply_bg(window)
 end)
 
