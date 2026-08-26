@@ -1,21 +1,15 @@
--- ============================================================
 --  WezTerm config — cross-platform (macOS + Linux)
--- ============================================================
 local wezterm = require("wezterm")
 local config = wezterm.config_builder()
-
--- Detect platform once, use everywhere below
 local is_mac = wezterm.target_triple:find("darwin") ~= nil
 
--- ── Renderer ────────────────────────────────────────────────
--- WebGpu (Metal) is fastest on Apple Silicon; OpenGL on Linux.
+-- Renderer 
 config.front_end = is_mac and "WebGpu" or "OpenGL"
--- Wayland toggle only means anything on Linux.
 if not is_mac then
   config.enable_wayland = false
 end
 
--- ── Appearance ──────────────────────────────────────────────
+-- Appearance
 config.color_scheme = "rose-pine-moon"
 config.font = wezterm.font("CommitMono Nerd Font")
 config.font_size = is_mac and 13.0 or 12.0 -- Retina wants a touch larger
@@ -31,24 +25,22 @@ config.colors = {
 config.inactive_pane_hsb = { saturation = 0.7, brightness = 0.3 }
 config.default_cursor_style = "BlinkingBar"
 
--- ── Tab bar (kept minimal / hidden chrome) ──────────────────
+-- Tab bar (kept minimal / hidden chrome) 
 config.enable_tab_bar = true
 config.use_fancy_tab_bar = false
 config.show_tabs_in_tab_bar = false
 config.show_new_tab_button_in_tab_bar = false
 config.tab_bar_at_bottom = true
 
--- ── Behavior ────────────────────────────────────────────────
+-- Behavior 
 config.window_close_confirmation = "NeverPrompt"
 config.max_fps = 120
 config.enable_kitty_graphics = true
 config.scrollback_lines = 10000
 
--- ============================================================
 --  Background image shuffler
 --  Cycles through images in ~/dotfiles/backgrounds on a timer.
 --  LEADER n = next (random), LEADER b = back (through history).
--- ============================================================
 local IMAGE_DIR        = wezterm.home_dir .. "/dotfiles/backgrounds"
 local SHUFFLE_SECONDS  = 120   -- auto-advance interval (0 = never)
 local START_WITH_IMAGE = true
@@ -153,10 +145,12 @@ local function back(window)
   end
 end
 
--- ============================================================
---  Keybindings (LEADER = Ctrl+a)
--- ============================================================
-config.leader = { key = "a", mods = "CTRL", timeout_milliseconds = 1000 }
+--  Keybindings (Linux Leader = Ctrl+a | MacOS Leader = CMD+a)
+config.leader = {
+  key = "a",
+  mods = is_mac and "CMD" or "CTRL",
+  timeout_milliseconds = 1000,
+}
 config.keys = {
   -- Splits
   { key = "[", mods = "LEADER", action = wezterm.action.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
@@ -178,9 +172,7 @@ config.keys = {
   { key = "b", mods = "LEADER", action = wezterm.action_callback(function(win) back(win) end) },
 }
 
--- ============================================================
 --  Status bar + hooks
--- ============================================================
 wezterm.on("format-window-title", function() return "" end)
 
 -- Single update-status handler: drives the shuffle timer AND the status bar
