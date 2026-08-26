@@ -180,6 +180,40 @@ config.keys = {
 --  Status bar + hooks
 wezterm.on("format-window-title", function() return "" end)
 
+-- Status helpers (throttled shell-outs) 
+-- osascript/git are subprocesses, so we cache results and only
+-- refresh every REFRESH_SECONDS to keep the terminal snappy.
+local REFRESH_SECONDS = 5
+
+local function now_playing()
+  if not is_mac then return "" end
+  -- Apple Music first
+  local ok, out = wezterm.run_child_process({
+    "osascript", "-e",
+    'tell application "Music" to if player state is playing then return (artist of current track) & " – " & (name of current track)',
+  })
+  if ok and out and out:gsub("%s+", "") ~= "" then
+    return (out:gsub("%s+$", ""))
+  end
+  -- Spotify fallback
+  local ok2, out2 = wezterm.run_child_process({
+    "osascript", "-e",
+    'tell application "Spotify" to if player state is playing then return (artist of current track) & " – " & (name of current track)',
+  })
+  if ok2 and out2 and out2:gsub("%s+", "") ~= "" then
+    return (out2:gsub("%s+$", ""))
+  end
+  return ""
+end
+local function git_branch(cwd_path)
+  if not cwd_path then return "" end
+  local ok, stdout = wezterm.run_child_process({
+    "git", "-C", cwd_path, "rev-parse", "--abbrev-ref", "HEAD",
+  })
+  if ok and stdout then return (stdout:gsub("%s+$", "")) end
+  return ""
+end
+
 -- Single update-status handler: drives the shuffle timer AND the status bar
 wezterm.on("update-status", function(window, pane)
   -- First paint: apply the initial background
@@ -193,7 +227,16 @@ wezterm.on("update-status", function(window, pane)
     forward(window)
   end
 
-  local c = { iris = "#c4a7e7" }
+  -- Throttled refresh of shell-based info (music, git)
+  local now = os.time()
+  if now >= (wezterm.GLOBAL.status_next or 0) then
+    wezterm.GLOBAL.status_next = now + REFRESH_SECONDS
+    wezterm.GLOBAL.np_cache = now_playing()
+    local cwd0 = pane:get_current_working_dir()
+    wezterm.GLOBAL.branch_cache = git_branch(cwd0 and cwd0.file_path or nil)
+  end
+
+  local c = { iris = "#c4a7e7", pine = "#3e8fb0", gold = "#f6c177", muted = "#6e6a86" }
 
   -- Left: LEADER indicator when the leader key is armed
   local leader = ""
@@ -206,18 +249,44 @@ wezterm.on("update-status", function(window, pane)
     { Text = leader },
   }))
 
-  -- Right: current directory + clock
+  -- Right: music · git · battery · dir · clock
+  local cells = {}
+
+  local np = wezterm.GLOBAL.np_cache or ""
+  if np ~= "" then
+    table.insert(cells, { Foreground = { Color = c.gold } })
+    table.insert(cells, { Text = wezterm.nerdfonts.md_music .. " " .. np .. "   " })
+  end
+
+  local branch = wezterm.GLOBAL.branch_cache or ""
+  if branch ~= "" then
+    table.insert(cells, { Foreground = { Color = c.pine } })
+    table.insert(cells, { Text = wezterm.nerdfonts.dev_git_branch .. " " .. branch .. "   " })
+  end
+
+  if is_mac then
+    for _, b in ipairs(wezterm.battery_info()) do
+      local pct = math.floor(b.state_of_charge * 100)
+      local icon = b.state == "Charging" and wezterm.nerdfonts.md_battery_charging
+        or wezterm.nerdfonts.md_battery
+      table.insert(cells, { Foreground = { Color = c.muted } })
+      table.insert(cells, { Text = icon .. " " .. pct .. "%   " })
+    end
+  end
+
   local dir = "~"
   local cwd = pane:get_current_working_dir()
   if cwd then
     dir = (cwd.file_path or ""):gsub("/+$", ""):match("([^/]+)$") or "/"
   end
-  window:set_right_status(wezterm.format({
-    { Background = { Color = "rgba(0,0,0,0)" } },
-    { Foreground = { Color = c.iris } },
-    { Text = wezterm.nerdfonts.cod_folder .. " " .. dir .. "   " },
-    { Text = wezterm.strftime("%H:%M ") },
-  }))
+  table.insert(cells, { Foreground = { Color = c.iris } })
+  table.insert(cells, { Text = wezterm.nerdfonts.cod_folder .. " " .. dir .. "   " })
+
+  table.insert(cells, { Foreground = { Color = c.iris } })
+  table.insert(cells, { Text = wezterm.strftime("%I:%M %p ") })
+
+  table.insert(cells, 1, { Background = { Color = "rgba(0,0,0,0)" } })
+  window:set_right_status(wezterm.format(cells))
 end)
 
 wezterm.on("window-resized", function(window, pane)
