@@ -15,8 +15,13 @@ config.font = wezterm.font("CommitMono Nerd Font")
 config.font_size = is_mac and 13.0 or 12.0 -- Retina wants a touch larger
 config.line_height = 1.1
 config.window_background_opacity = 0.5
-config.window_decorations = "TITLE | RESIZE"
-config.window_padding = { left = 8, right = 8, top = 8, bottom = 8 }
+config.window_decorations = is_mac and "INTEGRATED_BUTTONS | RESIZE" or "RESIZE"
+config.window_padding = {
+  left = 8,
+  right = 8,
+  top = is_mac and 36 or 8,
+  bottom = 8,
+}
 config.colors = {
   background = "#16161a",
   split = "#363636",
