@@ -3,7 +3,7 @@ local wezterm = require("wezterm")
 local config = wezterm.config_builder()
 local is_mac = wezterm.target_triple:find("darwin") ~= nil
 config.front_end = is_mac and "WebGpu" or "OpenGL"
-if not is_mac then
+  if not is_mac then
   config.enable_wayland = false
 end
 config.ssh_domains = {
@@ -15,8 +15,6 @@ config.ssh_domains = {
 }
 
 -- Appearance
--- "Deep Archival Inks" — dark ink on the paper background.
--- Palette source: ~/Vault/3. Winner - Gemini Pro.md
 local pal = {
   fg             = "#1a1a1a",
   fg_muted       = "#404040",
@@ -33,18 +31,12 @@ local pal = {
   orange         = "#9c4314",
 }
 -- Paper-like background: a barely-there vertical gradient with per-pixel
--- noise for grain. Tune the colors and noise to taste.
 local PAPER_LO    = "#d2d2d2"
 local PAPER_HI    = "#d6d6d6"
 local PAPER_NOISE = 200
 
 -- Monaspace Xenon (slab-serif of the Monaspace family).
--- Not a Nerd Font; WezTerm falls back to its bundled symbols font for
--- the status-bar glyphs.
-config.font = wezterm.font("Monaspace Xenon")
--- Texture healing + ligatures: `calt` drives the contextual glyph swaps that
--- even out spacing; `liga`/`dlig` enable ligatures; `ss01`-`ss08` are
--- Monaspace's stylistic sets (alt shapes, arrows, etc.).
+config.font = wezterm.font("Monaspace Xenon", { weight = "Medium" })
 config.harfbuzz_features = {
   "calt",
   "liga",
@@ -85,7 +77,11 @@ config.window_padding = {
   left = 8,
   right = 8,
   top = is_mac and 52 or 8,
-  bottom = 8,
+  bottom = 4,
+}
+config.window_frame = {
+  border_bottom_height = "0.5cell",
+  border_bottom_color = PAPER_HI,
 }
 local ansi = {
   pal.fg,      -- 0 black
@@ -98,7 +94,6 @@ local ansi = {
   pal.surface, -- 7 white
 }
 config.colors = {
-  -- No `background` key: the opaque paper layer covers it entirely.
   foreground = pal.fg,
   cursor_bg = pal.orange,
   cursor_fg = pal.surface,
@@ -108,7 +103,7 @@ config.colors = {
   split = pal.divider,
   scrollbar_thumb = pal.fg_faint,
   ansi = ansi,
-  brights = ansi, -- identical to 0-7 to preserve contrast on the light background
+  brights = ansi,
   tab_bar = { background = "rgba(0,0,0,0)" },
 }
 
@@ -131,6 +126,20 @@ config.leader = {
   mods = is_mac and "CMD" or "CTRL",
   timeout_milliseconds = 1000,
 }
+-- Apple Music transport control (macOS). 
+local function music(applescript)
+  return wezterm.action_callback(function()
+    if not is_mac then
+      return
+    end
+    wezterm.background_child_process({
+      "osascript",
+      "-e",
+      'if application "Music" is running then tell application "Music" to ' .. applescript,
+    })
+  end)
+end
+
 config.keys = {
   -- Splits
   { key = "[", mods = "LEADER", action = wezterm.action.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
@@ -153,37 +162,33 @@ config.keys = {
     size = { Percent = 40 },
     command = { domain = { DomainName = "pop-os" } },
   }) },
+  -- Apple Music: play/pause, next, previous, restart current track
+  { key = "p", mods = "LEADER", action = music("playpause") },
+  { key = "n", mods = "LEADER", action = music("next track") },
+  { key = "b", mods = "LEADER", action = music("previous track") },
+  { key = "0", mods = "LEADER", action = music("set player position to 0") },
 }
 
 --  Status bar + hooks
 wezterm.on("format-window-title", function() return "" end)
 
 -- Status helpers (async, file-backed)
--- osascript/git are subprocesses; running them inline on the status
--- thread stutters the UI. Instead a detached helper writes the results
--- to STATUS_FILE and update-status just reads that file. The refresh is
--- kicked off no more than once every REFRESH_SECONDS.
 local REFRESH_SECONDS = 5
 local CACHE_DIR = (os.getenv("XDG_CACHE_HOME") or (wezterm.home_dir .. "/.cache")) .. "/wezterm"
 local STATUS_FILE = CACHE_DIR .. "/status"
 
--- now-playing: one osascript per player, on purpose. A `tell application`
--- block fails to *compile* when that app isn't installed, so a merged
--- script would break Music on any machine without Spotify. The `is running`
--- guard means we never launch a player that isn't already open. Music wins.
+-- now-playing: Apple Music only.
 local NOW_PLAYING_SNIPPET = is_mac and [[
 np=""
-for app in Music Spotify; do
-  out=$(osascript -e "if application \"$app\" is running then
-  tell application \"$app\"
+out=$(osascript -e 'if application "Music" is running then
+  tell application "Music"
     if player state is playing then
-      return (artist of current track) & \" – \" & (name of current track)
+      return name of current track
     end if
   end tell
 end if
-return \"\"" 2>/dev/null || true)
-  if [ -n "$out" ]; then np=$out; break; fi
-done
+return ""' 2>/dev/null || true)
+[ -n "$out" ] && np="$out"
 ]] or 'np=""\n'
 
 -- $1 is the current working directory (may be empty).
@@ -224,52 +229,60 @@ wezterm.on("update-status", function(window, pane)
   local np, branch = read_status()
   local fg = pal.fg_muted
 
-  -- Left: LEADER indicator when the leader key is armed
-  local leader = ""
-  if window:leader_is_active() then
-    leader = " " .. wezterm.nerdfonts.oct_rocket .. " LEADER "
-  end
-  window:set_left_status(wezterm.format({
-    { Background = { Color = "rgba(0,0,0,0)" } },
-    { Foreground = { Color = fg } },
-    { Text = leader },
-  }))
-
-  -- Right: music · git · battery · dir · clock
-  local cells = {}
-
-  if np ~= "" then
-    table.insert(cells, { Foreground = { Color = fg } })
-    table.insert(cells, { Text = wezterm.nerdfonts.md_music .. " " .. np .. "   " })
-  end
-
-  if branch ~= "" then
-    table.insert(cells, { Foreground = { Color = fg } })
-    table.insert(cells, { Text = wezterm.nerdfonts.dev_git_branch .. " " .. branch .. "   " })
-  end
-
-  if is_mac then
-    for _, b in ipairs(wezterm.battery_info()) do
-      local pct = math.floor(b.state_of_charge * 100)
-      local icon = b.state == "Charging" and wezterm.nerdfonts.md_battery_charging
-        or wezterm.nerdfonts.md_battery
-      table.insert(cells, { Foreground = { Color = fg } })
-      table.insert(cells, { Text = icon .. " " .. pct .. "%   " })
-    end
-  end
-
+  -- Current working directory (basename).
   local dir = "~"
   local cwd = pane:get_current_working_dir()
   if cwd then
     dir = (cwd.file_path or ""):gsub("/+$", ""):match("([^/]+)$") or "/"
   end
-  table.insert(cells, { Foreground = { Color = fg } })
-  table.insert(cells, { Text = wezterm.nerdfonts.cod_folder .. " " .. dir .. "   " })
 
-  table.insert(cells, { Foreground = { Color = fg } })
+  -- LEFT: now-playing, prefixed by the LEADER hint while it's armed.
+  local left = "  "
+  if window:leader_is_active() then
+    left = left .. wezterm.nerdfonts.oct_rocket .. " LEADER  "
+  end
+  if np ~= "" then
+    left = left .. wezterm.nerdfonts.md_music_note_outline .. " " .. np
+  end
+
+  -- MIDDLE: git branch + current dir, centered across the tab bar. 
+  local mid = ""
+  if branch ~= "" then
+    mid = wezterm.nerdfonts.dev_git_branch .. " " .. branch .. "    "
+  end
+  mid = mid .. wezterm.nerdfonts.cod_folder .. " " .. dir
+
+  local cols
+  local ok, tab = pcall(function() return window:mux_window():active_tab() end)
+  if ok and tab then
+    cols = tab:get_size().cols
+  end
+  local pad = 2
+  if cols then
+    pad = math.floor((cols - wezterm.column_width(mid)) / 2) - wezterm.column_width(left)
+    if pad < 2 then pad = 2 end
+  end
+
+  window:set_left_status(wezterm.format({
+    { Background = { Color = "rgba(0,0,0,0)" } },
+    { Foreground = { Color = fg } },
+    { Text = left .. string.rep(" ", pad) .. mid },
+  }))
+
+  -- RIGHT: battery · clock
+  local cells = {
+    { Background = { Color = "rgba(0,0,0,0)" } },
+    { Foreground = { Color = fg } },
+  }
+  if is_mac then
+    for _, b in ipairs(wezterm.battery_info()) do
+      local pct = math.floor(b.state_of_charge * 100)
+      local icon = b.state == "Charging" and wezterm.nerdfonts.md_battery_charging
+        or wezterm.nerdfonts.md_battery
+      table.insert(cells, { Text = icon .. " " .. pct .. "%   " })
+    end
+  end
   table.insert(cells, { Text = wezterm.strftime("%I:%M %p ") })
-
-  table.insert(cells, 1, { Background = { Color = "rgba(0,0,0,0)" } })
   window:set_right_status(wezterm.format(cells))
 end)
 
