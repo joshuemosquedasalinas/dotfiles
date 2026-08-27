@@ -21,6 +21,27 @@ plugins=(
 source "$ZSH/oh-my-zsh.sh"
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
+# zsh-syntax-highlighting — "Deep Archival Inks" (see ~/Vault/3. Winner - Gemini Pro.md)
+# Must run after the plugin is sourced by oh-my-zsh above.
+typeset -gA ZSH_HIGHLIGHT_STYLES
+ZSH_HIGHLIGHT_STYLES[command]='fg=#204a87,bold'
+ZSH_HIGHLIGHT_STYLES[builtin]='fg=#204a87,bold'
+ZSH_HIGHLIGHT_STYLES[function]='fg=#204a87,bold'
+ZSH_HIGHLIGHT_STYLES[alias]='fg=#204a87,bold'
+ZSH_HIGHLIGHT_STYLES[precommand]='fg=#752c61,bold'
+ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#8f2727,underline'
+ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#752c61'
+ZSH_HIGHLIGHT_STYLES[path]='fg=#175e5e,underline'
+ZSH_HIGHLIGHT_STYLES[path_prefix]='fg=#175e5e'
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#225e31'
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#225e31'
+ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg=#9c4314'
+ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg=#9c4314'
+ZSH_HIGHLIGHT_STYLES[globbing]='fg=#705214,bold'
+ZSH_HIGHLIGHT_STYLES[command-substitution]='fg=#175e5e'
+ZSH_HIGHLIGHT_STYLES[process-substitution]='fg=#175e5e'
+ZSH_HIGHLIGHT_STYLES[comment]='fg=#404040,italic'
+
 # Environment
 export EDITOR="nvim"
 export VISUAL="nvim"
