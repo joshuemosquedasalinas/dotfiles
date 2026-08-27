@@ -32,14 +32,34 @@ local pal = {
   cyan           = "#175e5e",
   orange         = "#9c4314",
 }
-config.font = wezterm.font("CommitMono Nerd Font")
-config.font_size = is_mac and 13.0 or 12.0
-config.line_height = 1.1
 -- Paper-like background: a barely-there vertical gradient with per-pixel
 -- noise for grain. Tune the colors and noise to taste.
 local PAPER_LO    = "#d2d2d2"
 local PAPER_HI    = "#d6d6d6"
-local PAPER_NOISE = 48
+local PAPER_NOISE = 200
+
+-- Monaspace Xenon (slab-serif of the Monaspace family).
+-- Not a Nerd Font; WezTerm falls back to its bundled symbols font for
+-- the status-bar glyphs.
+config.font = wezterm.font("Monaspace Xenon")
+-- Texture healing + ligatures: `calt` drives the contextual glyph swaps that
+-- even out spacing; `liga`/`dlig` enable ligatures; `ss01`-`ss08` are
+-- Monaspace's stylistic sets (alt shapes, arrows, etc.).
+config.harfbuzz_features = {
+  "calt",
+  "liga",
+  "dlig",
+  "ss01",
+  "ss02",
+  "ss03",
+  "ss04",
+  "ss05",
+  "ss06",
+  "ss07",
+  "ss08",
+}
+config.font_size = is_mac and 13.0 or 12.0
+config.line_height = 1.1
 -- Window opacity: 1.0 = opaque. Lower it to let the desktop show through.
 config.window_background_opacity = 1.0
 config.background = {
@@ -78,7 +98,7 @@ local ansi = {
   pal.surface, -- 7 white
 }
 config.colors = {
-  background = "#16161a", -- beneath the paper layer; never visible
+  -- No `background` key: the opaque paper layer covers it entirely.
   foreground = pal.fg,
   cursor_bg = pal.orange,
   cursor_fg = pal.surface,
@@ -138,60 +158,70 @@ config.keys = {
 --  Status bar + hooks
 wezterm.on("format-window-title", function() return "" end)
 
--- Status helpers (throttled shell-outs) 
--- osascript/git are subprocesses, so we cache results and only
--- refresh every REFRESH_SECONDS to keep the terminal snappy.
+-- Status helpers (async, file-backed)
+-- osascript/git are subprocesses; running them inline on the status
+-- thread stutters the UI. Instead a detached helper writes the results
+-- to STATUS_FILE and update-status just reads that file. The refresh is
+-- kicked off no more than once every REFRESH_SECONDS.
 local REFRESH_SECONDS = 5
+local CACHE_DIR = (os.getenv("XDG_CACHE_HOME") or (wezterm.home_dir .. "/.cache")) .. "/wezterm"
+local STATUS_FILE = CACHE_DIR .. "/status"
 
--- One guarded script per player. The `is running` check means we never
--- launch a player that isn't already open (and skip the work when it's
--- closed). They stay separate calls on purpose: a `tell application` block
--- fails to *compile* when that app isn't installed, so a merged script
--- would break Music on any machine without Spotify. Apple Music wins.
-local function now_playing_script(app)
-  return ([[
-if application "%s" is running then
-  tell application "%s"
+-- now-playing: one osascript per player, on purpose. A `tell application`
+-- block fails to *compile* when that app isn't installed, so a merged
+-- script would break Music on any machine without Spotify. The `is running`
+-- guard means we never launch a player that isn't already open. Music wins.
+local NOW_PLAYING_SNIPPET = is_mac and [[
+np=""
+for app in Music Spotify; do
+  out=$(osascript -e "if application \"$app\" is running then
+  tell application \"$app\"
     if player state is playing then
-      return (artist of current track) & " – " & (name of current track)
+      return (artist of current track) & \" – \" & (name of current track)
     end if
   end tell
 end if
-return ""
-]]):format(app, app)
+return \"\"" 2>/dev/null || true)
+  if [ -n "$out" ]; then np=$out; break; fi
+done
+]] or 'np=""\n'
+
+-- $1 is the current working directory (may be empty).
+local STATUS_SCRIPT = table.concat({
+  'dir="$1"',
+  NOW_PLAYING_SNIPPET,
+  'branch=""',
+  'if [ -n "$dir" ]; then',
+  '  branch=$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || true)',
+  '  [ "$branch" = "HEAD" ] && branch=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null || true)',
+  'fi',
+  'mkdir -p "' .. CACHE_DIR .. '"',
+  'printf "%s\\n%s\\n" "$np" "$branch" > "' .. STATUS_FILE .. '.tmp" && mv "' .. STATUS_FILE .. '.tmp" "' .. STATUS_FILE .. '"',
+}, "\n")
+
+local function refresh_status(cwd_path)
+  wezterm.background_child_process({ "sh", "-c", STATUS_SCRIPT, "sh", cwd_path or "" })
 end
 
-local NOW_PLAYING_SCRIPTS = { now_playing_script("Music"), now_playing_script("Spotify") }
-
-local function now_playing()
-  if not is_mac then return "" end
-  for _, script in ipairs(NOW_PLAYING_SCRIPTS) do
-    local ok, out = wezterm.run_child_process({ "osascript", "-e", script })
-    if ok and out and out:gsub("%s+", "") ~= "" then
-      return (out:gsub("%s+$", ""))
-    end
-  end
-  return ""
-end
-local function git_branch(cwd_path)
-  if not cwd_path then return "" end
-  local ok, stdout = wezterm.run_child_process({
-    "git", "-C", cwd_path, "rev-parse", "--abbrev-ref", "HEAD",
-  })
-  if ok and stdout then return (stdout:gsub("%s+$", "")) end
-  return ""
+local function read_status()
+  local f = io.open(STATUS_FILE, "r")
+  if not f then return "", "" end
+  local np = f:read("l") or ""
+  local branch = f:read("l") or ""
+  f:close()
+  return np, branch
 end
 
 wezterm.on("update-status", function(window, pane)
-  -- Throttled refresh of shell-based info (music, git)
+  -- Kick off a throttled background refresh of the shell-based info.
   local now = os.time()
   if now >= (wezterm.GLOBAL.status_next or 0) then
     wezterm.GLOBAL.status_next = now + REFRESH_SECONDS
-    wezterm.GLOBAL.np_cache = now_playing()
     local cwd0 = pane:get_current_working_dir()
-    wezterm.GLOBAL.branch_cache = git_branch(cwd0 and cwd0.file_path or nil)
+    refresh_status(cwd0 and cwd0.file_path or nil)
   end
 
+  local np, branch = read_status()
   local fg = pal.fg_muted
 
   -- Left: LEADER indicator when the leader key is armed
@@ -208,13 +238,11 @@ wezterm.on("update-status", function(window, pane)
   -- Right: music · git · battery · dir · clock
   local cells = {}
 
-  local np = wezterm.GLOBAL.np_cache or ""
   if np ~= "" then
     table.insert(cells, { Foreground = { Color = fg } })
     table.insert(cells, { Text = wezterm.nerdfonts.md_music .. " " .. np .. "   " })
   end
 
-  local branch = wezterm.GLOBAL.branch_cache or ""
   if branch ~= "" then
     table.insert(cells, { Foreground = { Color = fg } })
     table.insert(cells, { Text = wezterm.nerdfonts.dev_git_branch .. " " .. branch .. "   " })
