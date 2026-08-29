@@ -35,21 +35,9 @@ local PAPER_LO    = "#d2d2d2"
 local PAPER_HI    = "#d6d6d6"
 local PAPER_NOISE = 200
 
--- Monaspace Xenon (slab-serif of the Monaspace family).
-config.font = wezterm.font("Monaspace Xenon", { weight = "Medium" })
-config.harfbuzz_features = {
-  "calt",
-  "liga",
-  "dlig",
-  "ss01",
-  "ss02",
-  "ss03",
-  "ss04",
-  "ss05",
-  "ss06",
-  "ss07",
-  "ss08",
-}
+-- IBM Plex Mono, Medium weight. Not a Nerd Font — WezTerm falls back to its
+-- bundled symbols font for the status-bar glyphs.
+config.font = wezterm.font("IBM Plex Mono", { weight = "Medium" })
 config.font_size = is_mac and 13.0 or 12.0
 config.line_height = 1.1
 -- Window opacity: 1.0 = opaque. Lower it to let the desktop show through.
@@ -68,7 +56,9 @@ config.background = {
   },
 }
 config.window_decorations = is_mac and "INTEGRATED_BUTTONS | RESIZE" or "RESIZE"
-config.inactive_pane_hsb = { saturation = 0.9, brightness = 0.95 }
+-- Inactive panes recede: pigments drop to half saturation (accents go muddy)
+-- and brightness eases to 88%.
+config.inactive_pane_hsb = { saturation = 0.5, brightness = 0.88 }
 config.default_cursor_style = "BlinkingBar"
 config.adjust_window_size_when_changing_font_size = false
 config.initial_cols = 120
@@ -83,6 +73,9 @@ config.window_frame = {
   border_bottom_height = "0.5cell",
   border_bottom_color = PAPER_HI,
 }
+-- On a light background "white" and "bright white" foreground text must
+-- render as ink, not paper — otherwise apps that colour text with ANSI 7/15
+-- (e.g. the agy TUI) are unreadable. Hues stay saturated; only the greys move.
 local ansi = {
   pal.fg,      -- 0 black
   pal.red,     -- 1 red
@@ -91,7 +84,17 @@ local ansi = {
   pal.blue,    -- 4 blue
   pal.magenta, -- 5 magenta
   pal.cyan,    -- 6 cyan
-  pal.surface, -- 7 white
+  pal.fg,      -- 7 white  -> normal ink
+}
+local brights = {
+  pal.fg_faint, -- 8  bright black -> a real dim grey
+  pal.red,      -- 9  bright red
+  pal.green,    -- 10 bright green
+  pal.yellow,   -- 11 bright yellow
+  pal.blue,     -- 12 bright blue
+  pal.magenta,  -- 13 bright magenta
+  pal.cyan,     -- 14 bright cyan
+  pal.fg,       -- 15 bright white -> normal ink
 }
 config.colors = {
   foreground = pal.fg,
@@ -103,9 +106,15 @@ config.colors = {
   split = pal.divider,
   scrollbar_thumb = pal.fg_faint,
   ansi = ansi,
-  brights = ansi,
+  brights = brights,
   tab_bar = { background = "rgba(0,0,0,0)" },
 }
+
+-- Command palette / InputSelector overlay styling (fits the paper theme)
+config.command_palette_bg_color = pal.surface
+config.command_palette_fg_color = pal.fg
+config.command_palette_font_size = is_mac and 13.0 or 12.0
+config.command_palette_rows = 6
 
 -- Tab bar (kept minimal / hidden chrome) 
 config.enable_tab_bar = true
@@ -126,54 +135,8 @@ config.leader = {
   mods = is_mac and "CMD" or "CTRL",
   timeout_milliseconds = 1000,
 }
--- Apple Music transport control (macOS). 
-local function music(applescript)
-  return wezterm.action_callback(function()
-    if not is_mac then
-      return
-    end
-    wezterm.background_child_process({
-      "osascript",
-      "-e",
-      'if application "Music" is running then tell application "Music" to ' .. applescript,
-    })
-  end)
-end
-
-config.keys = {
-  -- Splits
-  { key = "[", mods = "LEADER", action = wezterm.action.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
-  { key = "]", mods = "LEADER", action = wezterm.action.SplitVertical({ domain = "CurrentPaneDomain" }) },
-  -- Resize active pane
-  { key = "h", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Left", 5 }) },
-  { key = "j", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Down", 5 }) },
-  { key = "k", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Up", 5 }) },
-  { key = "l", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Right", 5 }) },
-  -- Move between panes
-  { key = "LeftArrow",  mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Left") },
-  { key = "DownArrow",  mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Down") },
-  { key = "UpArrow",    mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Up") },
-  { key = "RightArrow", mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Right") },
-  -- Close pane
-  { key = "x", mods = "LEADER", action = wezterm.action.CloseCurrentPane({ confirm = true }) },
-  -- LEADER s → split a new pane SSH'd into pop-os
-  { key = "s", mods = "LEADER", action = wezterm.action.SplitPane({
-    direction = "Down",
-    size = { Percent = 40 },
-    command = { domain = { DomainName = "pop-os" } },
-  }) },
-  -- Apple Music: play/pause, next, previous, restart current track
-  { key = "p", mods = "LEADER", action = music("playpause") },
-  { key = "n", mods = "LEADER", action = music("next track") },
-  { key = "b", mods = "LEADER", action = music("previous track") },
-  { key = "0", mods = "LEADER", action = music("set player position to 0") },
-}
-
---  Status bar + hooks
-wezterm.on("format-window-title", function() return "" end)
-
 -- Status helpers (async, file-backed)
-local REFRESH_SECONDS = 5
+local REFRESH_SECONDS = 1
 local CACHE_DIR = (os.getenv("XDG_CACHE_HOME") or (wezterm.home_dir .. "/.cache")) .. "/wezterm"
 local STATUS_FILE = CACHE_DIR .. "/status"
 
@@ -216,6 +179,115 @@ local function read_status()
   f:close()
   return np, branch
 end
+
+-- Apple Music transport control (macOS). 
+local function music(applescript)
+  return wezterm.action_callback(function(window, pane)
+    if not is_mac then
+      return
+    end
+    local cwd0 = pane:get_current_working_dir()
+    local cwd_path = cwd0 and cwd0.file_path or ""
+    wezterm.background_child_process({
+      "sh",
+      "-c",
+      'osascript -e \'if application "Music" is running then tell application "Music" to '
+        .. applescript
+        .. '\' && sleep 0.15 && '
+        .. STATUS_SCRIPT,
+      "sh",
+      cwd_path,
+    })
+    wezterm.GLOBAL.status_next = 0
+  end)
+end
+
+config.keys = {
+  -- Splits
+  { key = "[", mods = "LEADER", action = wezterm.action.SplitHorizontal({ domain = "CurrentPaneDomain" }) },
+  { key = "]", mods = "LEADER", action = wezterm.action.SplitVertical({ domain = "CurrentPaneDomain" }) },
+  -- Resize active pane
+  { key = "h", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Left", 5 }) },
+  { key = "j", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Down", 5 }) },
+  { key = "k", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Up", 5 }) },
+  { key = "l", mods = "LEADER", action = wezterm.action.AdjustPaneSize({ "Right", 5 }) },
+  -- Move between panes
+  { key = "LeftArrow",  mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Left") },
+  { key = "DownArrow",  mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Down") },
+  { key = "UpArrow",    mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Up") },
+  { key = "RightArrow", mods = "LEADER", action = wezterm.action.ActivatePaneDirection("Right") },
+  -- Close pane
+  { key = "x", mods = "LEADER", action = wezterm.action.CloseCurrentPane({ confirm = true }) },
+  -- LEADER s → Choose Horizontal or Vertical split SSH'd into pop-os
+  {
+    key = "s",
+    mods = "LEADER",
+    action = wezterm.action.InputSelector({
+      title = "SSH (pop-os) — Select Split Direction",
+      choices = {
+        {
+          id = "h",
+          label = wezterm.format({
+            { Attribute = { Intensity = "Bold" } },
+            { Foreground = { Color = pal.blue } },
+            { Text = "  1. Horizontal Split  " },
+            { Attribute = { Intensity = "Normal" } },
+            { Foreground = { Color = pal.fg_muted } },
+            { Text = "— Side-by-side (Left / Right)" },
+          }),
+        },
+        {
+          id = "v",
+          label = wezterm.format({
+            { Attribute = { Intensity = "Bold" } },
+            { Foreground = { Color = pal.cyan } },
+            { Text = "  2. Vertical Split    " },
+            { Attribute = { Intensity = "Normal" } },
+            { Foreground = { Color = pal.fg_muted } },
+            { Text = "— Stacked (Top / Bottom)" },
+          }),
+        },
+      },
+      action = wezterm.action_callback(function(window, pane, id, label)
+        if not id then
+          return
+        end
+        if id == "h" then
+          window:perform_action(
+            wezterm.action.SplitHorizontal({
+              args = { "ssh", "pop-os" },
+            }),
+            pane
+          )
+        elseif id == "v" then
+          window:perform_action(
+            wezterm.action.SplitVertical({
+              args = { "ssh", "pop-os" },
+            }),
+            pane
+          )
+        end
+      end),
+    }),
+  },
+  -- Apple Music: play/pause, next, previous, restart current track
+  { key = "p", mods = "LEADER", action = music("playpause") },
+  { key = "n", mods = "LEADER", action = music("next track") },
+  { key = "b", mods = "LEADER", action = music("previous track") },
+  { key = "0", mods = "LEADER", action = music("set player position to 0") },
+  -- LEADER m → prompt, then hand the line to the `music` fuzzy-search CLI
+  { key = "m", mods = "LEADER", action = wezterm.action.PromptInputLine({
+    description = "music:",
+    action = wezterm.action_callback(function(_, _, line)
+      if not is_mac or not line or line == "" then return end
+      wezterm.background_child_process({ wezterm.home_dir .. "/.local/bin/music", line })
+      wezterm.GLOBAL.status_next = 0
+    end),
+  }) },
+}
+
+--  Status bar + hooks
+wezterm.on("format-window-title", function() return "" end)
 
 wezterm.on("update-status", function(window, pane)
   -- Kick off a throttled background refresh of the shell-based info.

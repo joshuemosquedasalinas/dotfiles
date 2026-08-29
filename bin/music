@@ -1,0 +1,502 @@
+#!/usr/bin/env python3
+"""music - fuzzy-search the Apple Music library and control playback.
+
+usage:
+  music shuffle            shuffle-play the entire library
+  music <query>            artist -> shuffle their songs; song -> play now
+  music -a <query>         force artist interpretation
+  music -s <query>         force song interpretation
+  music --reindex          rebuild the library cache
+
+macOS only. Searches your Apple Music *library*, not the catalog.
+"""
+
+import os
+import re
+import sys
+import time
+import random
+import subprocess
+import unicodedata
+from difflib import SequenceMatcher
+
+if sys.platform != "darwin":
+    print("music: macOS only")
+    sys.exit(0)
+
+# -- constants --------------------------------------------------------------
+CACHE_DIR = os.path.join(
+    os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "music"
+)
+INDEX = os.path.join(CACHE_DIR, "index.tsv")
+QUEUE_PLAYLIST = os.environ.get("MUSIC_QUEUE_PLAYLIST") or "▶︎ music"
+STALE_SECS = 24 * 3600
+MIN_SCORE = 0.40
+TIE_MARGIN = 0.05
+SHUFFLE_FAST_PATH = 60
+
+USAGE = ("usage: music shuffle   |   music [-a|-s] <query>   |   music --reindex")
+
+
+class MusicError(Exception):
+    pass
+
+
+def warn(msg):
+    print(f"music: {msg}", file=sys.stderr)
+
+
+def die(msg, code=1):
+    print(f"music: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+# -- osascript bridge -----------------------------------------------------
+def osa(script, *args, lang="applescript", timeout=15):
+    """Run an osascript, passing library strings via `on run argv` (never
+    interpolated - the library has values like `L$D` and `A$AP Rocky`)."""
+    cmd = ["osascript"]
+    if lang == "jxa":
+        cmd += ["-l", "JavaScript"]
+    cmd += ["-e", script]
+    if args:
+        cmd += ["--", *[str(a) for a in args]]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise MusicError(f"osascript timed out after {timeout}s")
+    if p.returncode != 0:
+        raise MusicError((p.stderr or p.stdout).strip() or "osascript failed")
+    return p.stdout.strip()
+
+
+def music_running():
+    try:
+        return osa('application "Music" is running') == "true"
+    except MusicError:
+        return False
+
+
+# -- library index ------------------------------------------------------
+_JXA_DUMP = r"""
+function run() {
+  const se = Application("System Events");
+  if (!se.applicationProcesses.name().includes("Music")) return "";
+  const t = Application("Music").libraryPlaylists[0].tracks;
+  const name = t.name(), artist = t.artist(), albumArtist = t.albumArtist(), pid = t.persistentID();
+  const clean = s => String(s || "").replace(/[\t\r\n]+/g, " ").trim();
+  const rows = [];
+  for (let i = 0; i < name.length; i++)
+    rows.push([clean(name[i]), clean(artist[i]), clean(albumArtist[i]), pid[i]].join("\t"));
+  return rows.join("\n");
+}
+"""
+
+
+class Track:
+    __slots__ = ("song", "artist", "album_artist", "pid")
+
+    def __init__(self, song, artist, album_artist, pid):
+        self.song = song
+        self.artist = artist
+        self.album_artist = album_artist
+        self.pid = pid
+
+
+def build_index():
+    """Dump the whole library to the cache. Returns the raw TSV text."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    out = osa(_JXA_DUMP, lang="jxa", timeout=60)
+    if not out:
+        raise MusicError("open Music.app once so I can read your library")
+    tmp = INDEX + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(out + "\n")
+    os.replace(tmp, INDEX)
+    return out
+
+
+def _parse_index(text):
+    tracks = []
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4 or not parts[3]:
+            continue
+        tracks.append(Track(*parts))
+    return tracks
+
+
+def load_index(force_reindex=False):
+    stale = force_reindex
+    if not force_reindex:
+        try:
+            stale = (time.time() - os.path.getmtime(INDEX)) > STALE_SECS
+        except OSError:
+            stale = True
+    text = None
+    if stale:
+        try:
+            text = build_index()
+        except MusicError as e:
+            if os.path.exists(INDEX):
+                warn(f"using cached library index ({e})")
+            else:
+                die(str(e))
+    if text is None:
+        with open(INDEX, encoding="utf-8") as f:
+            text = f.read()
+    tracks = _parse_index(text)
+    if not tracks:
+        die("library index is empty - run `music --reindex` with Music open")
+    return tracks
+
+
+def build_artists(tracks):
+    """name-key -> {display, kind ('artist'|'album artist'), exact, pids}.
+    Keyed off both artist and album artist so compilation tracks stay
+    reachable by the real performer."""
+    pool = {}
+    for t in tracks:
+        for kind, value in (("artist", t.artist), ("album artist", t.album_artist)):
+            key = norm(value)
+            if not key:
+                continue
+            entry = pool.get(key)
+            if entry is None:
+                pool[key] = {"display": value, "kind": kind, "exact": value, "pids": [t.pid]}
+            else:
+                if entry["kind"] == "album artist" and kind == "artist":
+                    entry["kind"], entry["exact"], entry["display"] = "artist", value, value
+                entry["pids"].append(t.pid)
+    for entry in pool.values():
+        entry["pids"] = list(dict.fromkeys(entry["pids"]))
+    return pool
+
+
+# -- fuzzy matching ----------------------------------------------------
+_punct = re.compile(r"[^\w\s]", re.UNICODE)
+_ws = re.compile(r"\s+")
+
+
+def norm(s):
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = _punct.sub(" ", s.casefold())
+    return _ws.sub(" ", s).strip()
+
+
+def _ratio(a, b):
+    return SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+
+def _token_subseq(q_toks, c_toks):
+    it = iter(c_toks)
+    return all(tok in it for tok in q_toks)
+
+
+def score(query, candidate):
+    q, c = norm(query), norm(candidate)
+    if not q or not c:
+        return 0.0
+    if q == c:
+        return 1.0
+    qt, ct = q.split(), c.split()
+    s = _ratio(q, c)
+    if c.startswith(q):
+        s = max(s, 0.97)
+    elif q in c:
+        s = max(s, 0.90 - 0.15 * (len(c) - len(q)) / len(c))
+    if qt and _token_subseq(qt, ct):
+        s = max(s, 0.80 + 0.15 * len(qt) / len(ct))  # reward covering more of the name
+    if qt and ct:
+        inter = len(set(qt) & set(ct))
+        if inter:
+            s = max(s, 0.55 * inter / len(qt) + (0.30 if inter == len(qt) else 0.0))
+        per = sum(max(_ratio(x, y) for y in ct) for x in qt) / len(qt)
+        s = max(s, 0.80 * per)
+    return min(s, 1.0)
+
+
+def best_artist(query, pool):
+    best, best_s = None, 0.0
+    for entry in pool.values():
+        s = score(query, entry["display"])
+        if s > best_s:
+            best, best_s = entry, s
+            if best_s >= 1.0:
+                break
+    return best, best_s
+
+
+def best_song(query, tracks):
+    best, best_s = None, 0.0
+    for t in tracks:
+        s = score(query, t.song)
+        if 0.5 <= s < 1.0 and score(query, t.artist + " " + t.song) > s:
+            s = min(1.0, s + 0.05)
+        if s > best_s:
+            best, best_s = t, s
+            if best_s >= 1.0:
+                break
+    return best, best_s
+
+
+def resolve(query, force, tracks, pool):
+    art, ascore = best_artist(query, pool)
+    trk, sscore = best_song(query, tracks)
+    if force == "artist":
+        return ("artist", art, ascore) if art else die(f'no artist matching "{query}"')
+    if force == "song":
+        return ("song", trk, sscore) if trk else die(f'no song matching "{query}"')
+    if max(ascore, sscore) < MIN_SCORE:
+        lines = [f'nothing in your library close to "{query}"']
+        if art:
+            lines.append(f'  closest artist: {art["display"]} ({ascore:.2f})')
+        if trk:
+            lines.append(f"  closest song:   {trk.song} - {trk.artist} ({sscore:.2f})")
+        die("\n".join(lines))
+    # A short query reads like a name -> let a solid artist match win ties and
+    # near-ties. A longer query reads like a title -> songs win ties.
+    short = len(query.split()) <= 2
+    if art and ascore >= 0.70 and ascore + TIE_MARGIN >= sscore and (short or ascore >= sscore):
+        return ("artist", art, ascore)
+    if ascore >= sscore + TIE_MARGIN:
+        return ("artist", art, ascore)
+    return ("song", trk, sscore)
+
+
+# -- playback (100% headless, zero GUI interaction) ---------------------
+_AS_SHUFFLE_SMALL = r"""
+on run argv
+  set plName to item 1 of argv
+  set pids to rest of argv
+  tell application "Music"
+    if not (exists user playlist plName) then make new user playlist with properties {name:plName}
+    set pl to user playlist plName
+    try
+      delete every track of pl
+    end try
+    repeat with p in pids
+      try
+        duplicate (first track of library playlist 1 whose persistent ID is (p as string)) to end of pl
+      end try
+    end repeat
+    set shuffle mode to songs
+    set shuffle enabled to true
+    play pl
+    try
+      set song repeat to all
+    end try
+  end tell
+end run
+"""
+
+_AS_SHUFFLE_BIG = r"""
+on run argv
+  set plName to item 1 of argv
+  set clauseKind to item 2 of argv
+  set artistName to item 3 of argv
+  tell application "Music"
+    if not (exists user playlist plName) then make new user playlist with properties {name:plName}
+    set pl to user playlist plName
+    try
+      delete every track of pl
+    end try
+    if clauseKind is "album artist" then
+      duplicate (every track of library playlist 1 whose album artist is artistName) to pl
+    else
+      duplicate (every track of library playlist 1 whose artist is artistName) to pl
+    end if
+    set shuffle mode to songs
+    set shuffle enabled to true
+    play pl
+    try
+      set song repeat to all
+    end try
+  end tell
+end run
+"""
+
+_AS_SHUFFLE_ALL = r"""
+tell application "Music"
+  set shuffle mode to songs
+  set shuffle enabled to true
+  play library playlist 1
+  try
+    set song repeat to all
+  end try
+end tell
+"""
+
+_AS_PLAY_SONG = r"""
+on run argv
+  set pid to item 1 of argv
+  tell application "Music"
+    set trk to (first track of library playlist 1 whose persistent ID is pid)
+    play trk
+    set shuffle mode to songs
+    set shuffle enabled to true
+    try
+      set song repeat to all
+    end try
+  end tell
+end run
+"""
+
+
+def update_status_cache(track_name=None):
+    """Immediately query the currently playing track and update ~/.cache/wezterm/status."""
+    try:
+        if track_name is None:
+            time.sleep(0.15)
+            track_name = osa(
+                'if application "Music" is running then\n'
+                '  tell application "Music"\n'
+                '    if player state is playing then\n'
+                '      return name of current track\n'
+                '    end if\n'
+                '  end tell\n'
+                'end if\n'
+                'return ""'
+            )
+        wez_cache = os.path.join(
+            os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "wezterm"
+        )
+        os.makedirs(wez_cache, exist_ok=True)
+        status_file = os.path.join(wez_cache, "status")
+        cur_branch = ""
+        if os.path.exists(status_file):
+            with open(status_file, "r", encoding="utf-8") as f:
+                lines = f.read().splitlines()
+                if len(lines) > 1:
+                    cur_branch = lines[1]
+        tmp = status_file + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(f"{track_name}\n{cur_branch}\n")
+        os.replace(tmp, status_file)
+    except Exception:
+        pass
+
+
+def shuffle_library():
+    try:
+        osa(_AS_SHUFFLE_ALL, timeout=20)
+    except MusicError as e:
+        die(f"couldn't start shuffle ({e})")
+    time.sleep(0.15)
+    try:
+        np = osa('if application "Music" is running then tell application "Music" to if player state is playing then return name of current track\nreturn ""')
+    except Exception:
+        np = ""
+    update_status_cache(np)
+    if np:
+        print(f"▶ shuffling your library: {np}")
+    else:
+        print("▶ shuffling your library")
+
+
+def play_artist(entry):
+    pids, name = entry["pids"], entry["display"]
+    if not pids:
+        die(f'no tracks by "{name}" in your library')
+    try:
+        if len(pids) <= SHUFFLE_FAST_PATH:
+            shuffled = pids[:]
+            random.shuffle(shuffled)
+            osa(_AS_SHUFFLE_SMALL, QUEUE_PLAYLIST, *shuffled, timeout=45)
+        else:
+            osa(_AS_SHUFFLE_BIG, QUEUE_PLAYLIST, entry["kind"], entry["exact"], timeout=45)
+    except MusicError as e:
+        die(f"couldn't start playback ({e})")
+    time.sleep(0.15)
+    try:
+        np = osa('if application "Music" is running then tell application "Music" to if player state is playing then return name of current track\nreturn ""')
+    except Exception:
+        np = ""
+    update_status_cache(np)
+    print(f'▶ shuffling {len(pids)} track{"" if len(pids) == 1 else "s"} by "{name}"' + (f": {np}" if np else ""))
+
+
+def play_song(trk):
+    label = f"{trk.song} - {trk.artist}"
+    try:
+        osa(_AS_PLAY_SONG, trk.pid, timeout=20)
+    except MusicError as e:
+        if "persistent ID" in str(e) or "get first track" in str(e).replace("’", "'"):
+            die(f'"{trk.song}" is no longer in your library - run `music --reindex`')
+        die(f"couldn't play ({e})")
+    update_status_cache(trk.song)
+    print(f"▶ {label}")
+
+
+# -- cli ------------------------------------------------------------
+def parse_args(argv):
+    force = None
+    flags, kept = set(), []
+    for tk in " ".join(argv).split():
+        low = tk.lower()
+        if low in ("-a", "--artist"):
+            force = "artist"
+        elif low in ("-s", "--song"):
+            force = "song"
+        elif low in ("--reindex", "--rebuild"):
+            flags.add("reindex")
+        elif low == "--reindex-quiet":
+            flags.add("reindex_quiet")
+        elif low in ("-h", "--help"):
+            flags.add("help")
+        else:
+            kept.append(tk)
+    return force, flags, " ".join(kept).strip()
+
+
+def main():
+    force, flags, query = parse_args(sys.argv[1:])
+
+    if "help" in flags:
+        print(__doc__.strip())
+        return
+    if "reindex_quiet" in flags:
+        try:
+            build_index()
+        except MusicError:
+            pass
+        return
+    if "reindex" in flags and not query:
+        try:
+            n = len(_parse_index(build_index()))
+        except MusicError as e:
+            die(str(e))
+        print(f"music: indexed {n} tracks")
+        return
+    if not query:
+        die(USAGE, 2)
+
+    if query.lower() == "shuffle" and force is None:
+        if not music_running():
+            die("open Music.app first")
+        shuffle_library()
+        return
+
+    tracks = load_index(force_reindex="reindex" in flags)
+    pool = build_artists(tracks)
+    kind, obj, sc = resolve(query, force, tracks, pool)
+
+    if not music_running():
+        die("open Music.app first")
+
+    if sc < 1.0:
+        label = obj["display"] if kind == "artist" else f"{obj.song} - {obj.artist}"
+        warn(f'no exact match - closest is "{label}" ({sc:.2f})')
+
+    if kind == "artist":
+        play_artist(obj)
+    else:
+        play_song(obj)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

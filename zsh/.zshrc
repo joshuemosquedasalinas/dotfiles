@@ -18,6 +18,9 @@ plugins=(
   zsh-syntax-highlighting  # must stay last
 )
 
+# Custom completions (must be on fpath before oh-my-zsh runs compinit)
+fpath=("$HOME/dotfiles/zsh/completions" $fpath)
+
 source "$ZSH/oh-my-zsh.sh"
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
@@ -41,6 +44,10 @@ ZSH_HIGHLIGHT_STYLES[globbing]='fg=#705214,bold'
 ZSH_HIGHLIGHT_STYLES[command-substitution]='fg=#175e5e'
 ZSH_HIGHLIGHT_STYLES[process-substitution]='fg=#175e5e'
 ZSH_HIGHLIGHT_STYLES[comment]='fg=#404040,italic'
+
+# Bracketed paste highlighting — white text on black background (reverts when unhighlighted)
+typeset -ga zle_highlight
+zle_highlight=(paste:'bg=#1a1a1a,fg=#e4e4e4')
 
 # Environment
 export EDITOR="nvim"
@@ -122,3 +129,7 @@ alias gd="git diff"
 alias gp="git push"
 alias gbo_main="git branch -u origin/main && git pull"
 alias lg="lazygit"
+
+
+# Added by Antigravity CLI installer
+export PATH="/Users/joshue/.local/bin:$PATH"

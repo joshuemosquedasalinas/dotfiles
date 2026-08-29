@@ -14,5 +14,12 @@ ln -sf "$DOTFILES/nvim/init.lua"        ~/.config/nvim/init.lua
 ln -sf "$DOTFILES/nvim/lazy-lock.json"  ~/.config/nvim/lazy-lock.json
 ln -sf "$DOTFILES/wezterm/wezterm.lua"  ~/.config/wezterm/wezterm.lua
 
+# music: fuzzy Apple Music control (macOS only, no-ops elsewhere)
+mkdir -p ~/.local/bin
+ln -sf "$DOTFILES/bin/music"            ~/.local/bin/music
+
+# Note: zsh/.zshrc and zsh/.p10k.zsh are symlinked by hand on the main
+# machine (~/.zshrc -> this repo) but intentionally left out here.
+
 echo "Done. Symlinks created."
 echo "Open Neovim and run :Lazy sync to install plugins."

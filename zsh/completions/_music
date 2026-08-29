@@ -1,0 +1,42 @@
+#compdef music
+#
+# Completion for `music` — fuzzy Apple Music control.
+# Artist + song names are pulled from the cache the CLI maintains at
+# ${XDG_CACHE_HOME:-~/.cache}/music/index.tsv (run `music --reindex` to refresh).
+
+_music() {
+  local -a flags
+  flags=(
+    '-a[force artist interpretation]'
+    '--artist[force artist interpretation]'
+    '-s[force song interpretation]'
+    '--song[force song interpretation]'
+    '--reindex[rebuild the library cache]'
+    '-h[show help]'
+    '--help[show help]'
+  )
+
+  if [[ ${words[CURRENT]} == -* ]]; then
+    _arguments -s $flags
+    return
+  fi
+
+  local idx=${XDG_CACHE_HOME:-$HOME/.cache}/music/index.tsv
+  if [[ ! -r $idx ]]; then
+    _arguments -s $flags
+    return
+  fi
+
+  # Names contain spaces, &, $ — read whole fields, never word-split.
+  local -aU names
+  local song artist
+  names=(shuffle)
+  while IFS=$'\t' read -r song artist _; do
+    [[ -n $song ]] && names+=$song
+    [[ -n $artist ]] && names+=$artist
+  done < $idx
+
+  _wanted names expl 'artist or song' compadd -a names
+}
+
+_music "$@"
