@@ -37,15 +37,17 @@
   # Zsh >= 5.1 is required.
   [[ $ZSH_VERSION == (5.<1->*|<6->.*) ]] || return
 
-  # Prompt colors — "Deep Archival Inks" palette (see ~/Vault/3. Winner - Gemini Pro.md).
-  local fg_muted='#404040'
-  local red='#8f2727'
-  local green='#225e31'
-  local yellow='#705214'
-  local blue='#204a87'
-  local magenta='#752c61'
-  local cyan='#175e5e'
-  local orange='#9c4314'
+  # Prompt colors — "Deep Archival Inks" palette, generated from
+  # ~/dotfiles/theme/palette.json (theme/build.py).
+  source ~/dotfiles/theme/palette.sh
+  local fg_muted=$THEME_FG_MUTED
+  local red=$THEME_RED
+  local green=$THEME_GREEN
+  local yellow=$THEME_YELLOW
+  local blue=$THEME_BLUE
+  local magenta=$THEME_MAGENTA
+  local cyan=$THEME_CYAN
+  local orange=$THEME_ORANGE
 
   # Left prompt segments.
   typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(

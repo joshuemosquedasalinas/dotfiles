@@ -24,30 +24,34 @@ fpath=("$HOME/dotfiles/zsh/completions" $fpath)
 source "$ZSH/oh-my-zsh.sh"
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-# zsh-syntax-highlighting — "Deep Archival Inks" (see ~/Vault/3. Winner - Gemini Pro.md)
+# "Deep Archival Inks" palette — generated from ~/dotfiles/theme/palette.json
+# (theme/build.py). THEME_* vars.
+source ~/dotfiles/theme/palette.sh
+
+# zsh-syntax-highlighting — themed to the palette.
 # Must run after the plugin is sourced by oh-my-zsh above.
 typeset -gA ZSH_HIGHLIGHT_STYLES
-ZSH_HIGHLIGHT_STYLES[command]='fg=#204a87,bold'
-ZSH_HIGHLIGHT_STYLES[builtin]='fg=#204a87,bold'
-ZSH_HIGHLIGHT_STYLES[function]='fg=#204a87,bold'
-ZSH_HIGHLIGHT_STYLES[alias]='fg=#204a87,bold'
-ZSH_HIGHLIGHT_STYLES[precommand]='fg=#752c61,bold'
-ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#8f2727,underline'
-ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#752c61'
-ZSH_HIGHLIGHT_STYLES[path]='fg=#175e5e,underline'
-ZSH_HIGHLIGHT_STYLES[path_prefix]='fg=#175e5e'
-ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#225e31'
-ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#225e31'
-ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg=#9c4314'
-ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg=#9c4314'
-ZSH_HIGHLIGHT_STYLES[globbing]='fg=#705214,bold'
-ZSH_HIGHLIGHT_STYLES[command-substitution]='fg=#175e5e'
-ZSH_HIGHLIGHT_STYLES[process-substitution]='fg=#175e5e'
-ZSH_HIGHLIGHT_STYLES[comment]='fg=#404040,italic'
+ZSH_HIGHLIGHT_STYLES[command]="fg=${THEME_BLUE},bold"
+ZSH_HIGHLIGHT_STYLES[builtin]="fg=${THEME_BLUE},bold"
+ZSH_HIGHLIGHT_STYLES[function]="fg=${THEME_BLUE},bold"
+ZSH_HIGHLIGHT_STYLES[alias]="fg=${THEME_BLUE},bold"
+ZSH_HIGHLIGHT_STYLES[precommand]="fg=${THEME_MAGENTA},bold"
+ZSH_HIGHLIGHT_STYLES[unknown-token]="fg=${THEME_RED},underline"
+ZSH_HIGHLIGHT_STYLES[reserved-word]="fg=${THEME_MAGENTA}"
+ZSH_HIGHLIGHT_STYLES[path]="fg=${THEME_CYAN},underline"
+ZSH_HIGHLIGHT_STYLES[path_prefix]="fg=${THEME_CYAN}"
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]="fg=${THEME_GREEN}"
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]="fg=${THEME_GREEN}"
+ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]="fg=${THEME_ORANGE}"
+ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]="fg=${THEME_ORANGE}"
+ZSH_HIGHLIGHT_STYLES[globbing]="fg=${THEME_YELLOW},bold"
+ZSH_HIGHLIGHT_STYLES[command-substitution]="fg=${THEME_CYAN}"
+ZSH_HIGHLIGHT_STYLES[process-substitution]="fg=${THEME_CYAN}"
+ZSH_HIGHLIGHT_STYLES[comment]="fg=${THEME_FG_MUTED},italic"
 
-# Bracketed paste highlighting — white text on black background (reverts when unhighlighted)
+# Bracketed paste highlighting — ink text on paper... er, dark bg (reverts when unhighlighted)
 typeset -ga zle_highlight
-zle_highlight=(paste:'bg=#1a1a1a,fg=#e4e4e4')
+zle_highlight=(paste:"bg=${THEME_FG},fg=${THEME_SURFACE}")
 
 # Environment
 export EDITOR="nvim"
@@ -113,7 +117,8 @@ config() {
     nvim)    nvim ~/dotfiles/nvim/init.lua ;;
     zsh)     nvim ~/dotfiles/zsh/.zshrc ;;
     p10k)    nvim ~/.p10k.zsh ;;
-    *)       echo "Usage: config [wezterm|nvim|zsh|p10k]" ;;
+    theme)   nvim ~/dotfiles/theme/palette.json ;;
+    *)       echo "Usage: config [wezterm|nvim|zsh|p10k|theme]" ;;
   esac
 }
 

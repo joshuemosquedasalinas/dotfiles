@@ -19,14 +19,10 @@ vim.opt.scrolloff = 8
 vim.opt.undofile = true        
 vim.opt.updatetime = 250       
 -- Colorscheme: "Deep Archival Inks" — dark ink on the terminal's paper background.
--- Palette source: ~/Vault/3. Winner - Gemini Pro.md
+-- Palette is generated from ~/dotfiles/theme/palette.json (see theme/build.py);
+-- install.sh symlinks it to ~/.config/nvim/lua/palette.lua.
 vim.opt.background = "light"
-local pal = {
-  fg = "#1a1a1a", fg_muted = "#404040", fg_faint = "#595959",
-  divider = "#a3a3a3", surface = "#e4e4e4", surface_active = "#ececec",
-  red = "#8f2727", green = "#225e31", yellow = "#705214", blue = "#204a87",
-  magenta = "#752c61", cyan = "#175e5e", orange = "#9c4314",
-}
+local pal = require("palette")
 local theme_groups = {
   -- Base / UI
   Normal = { fg = pal.fg, bg = "NONE" },
@@ -316,21 +312,21 @@ require("lazy").setup({
     "nvim-lualine/lualine.nvim",
     dependencies = { "nvim-tree/nvim-web-devicons" }, 
     config = function()
-      -- "Deep Archival Inks" statusline — see ~/Vault/3. Winner - Gemini Pro.md
+      -- "Deep Archival Inks" statusline — palette from ~/dotfiles/theme/palette.json
       local archival = {
         normal = {
-          a = { bg = "#204a87", fg = "#e4e4e4", gui = "bold" },
-          b = { bg = "#e4e4e4", fg = "#404040", gui = "none" },
-          c = { bg = "#ececec", fg = "#1a1a1a", gui = "none" },
+          a = { bg = pal.blue, fg = pal.surface, gui = "bold" },
+          b = { bg = pal.surface, fg = pal.fg_muted, gui = "none" },
+          c = { bg = pal.surface_active, fg = pal.fg, gui = "none" },
         },
-        insert = { a = { bg = "#225e31", fg = "#e4e4e4", gui = "bold" } },
-        visual = { a = { bg = "#705214", fg = "#1a1a1a", gui = "bold" } },
-        replace = { a = { bg = "#8f2727", fg = "#e4e4e4", gui = "bold" } },
-        command = { a = { bg = "#752c61", fg = "#e4e4e4", gui = "bold" } },
+        insert = { a = { bg = pal.green, fg = pal.surface, gui = "bold" } },
+        visual = { a = { bg = pal.yellow, fg = pal.fg, gui = "bold" } },
+        replace = { a = { bg = pal.red, fg = pal.surface, gui = "bold" } },
+        command = { a = { bg = pal.magenta, fg = pal.surface, gui = "bold" } },
         inactive = {
-          a = { bg = "#a3a3a3", fg = "#404040" },
-          b = { bg = "#e4e4e4", fg = "#595959" },
-          c = { bg = "#ececec", fg = "#404040" },
+          a = { bg = pal.divider, fg = pal.fg_muted },
+          b = { bg = pal.surface, fg = pal.fg_faint },
+          c = { bg = pal.surface_active, fg = pal.fg_muted },
         },
       }
       require("lualine").setup({

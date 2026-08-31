@@ -5,9 +5,13 @@ My Neovim, WezTerm, and zsh setup. Runs on macOS and on Linux (Pop!_OS).
 Everything shares one color theme I call Deep Archival Inks. It is a light theme.
 The terminal background is a near white gradient with a bit of per pixel noise so
 it reads a little like paper, and every foreground color is dark and fairly muted
-so it stays legible on that background. WezTerm, the Neovim colorscheme,
-Powerlevel10k, and zsh syntax highlighting all pull from the same short palette,
-and each accent color keeps the same meaning everywhere:
+so it stays legible on that background. The palette lives in one file,
+`theme/palette.json`. `theme/build.py` renders it into the forms each tool needs
+(`theme/palette.sh` for zsh, `wezterm/lua/palette.lua` and `nvim/lua/palette.lua`
+for the Lua configs), so WezTerm, the Neovim colorscheme, Powerlevel10k, and zsh
+syntax highlighting all read the same values. Edit `palette.json`, run
+`theme/build.py` (or just `install.sh`), reload. Each accent color keeps the same
+meaning everywhere:
 
 | Color   | Where it shows up |
 | ------- | ----------------- |
@@ -30,10 +34,11 @@ cd ~/dotfiles
 ./install.sh
 ```
 
-`install.sh` symlinks the Neovim and WezTerm configs into `~/.config` and drops
-`bin/music` into `~/.local/bin`. It does not touch the zsh files. I symlink
+`install.sh` regenerates the theme files from `theme/palette.json`, symlinks the
+Neovim and WezTerm configs into `~/.config` (including the `lua/` module dirs), and
+drops `bin/music` into `~/.local/bin`. It does not touch the zsh files. I symlink
 `~/.zshrc` and `~/.p10k.zsh` by hand on my main machine and left them out of the
-installer on purpose.
+installer on purpose; both `source ~/dotfiles/theme/palette.sh` directly.
 
 After that, open Neovim and run `:Lazy sync` to pull plugins.
 
@@ -45,12 +50,29 @@ After that, open Neovim and run `:Lazy sync` to pull plugins.
 - A clipboard provider (`wl-clipboard` on Linux, built in on macOS)
 - `ripgrep`, `fd`, `fzf` for fuzzy finding
 - Node.js and Go for the language servers Mason installs
-- Python 3 on macOS for the `music` script
+- Python 3 for `theme/build.py` (install.sh falls back to the committed theme files if it is missing) and, on macOS, the `music` script
 - Optional: `fastfetch` for the shell greeting, `lazygit` for the `lg` alias
 
 ## What is in here
 
-### WezTerm (`wezterm/wezterm.lua`)
+### WezTerm (`wezterm/wezterm.lua` + `wezterm/lua/`)
+
+`wezterm.lua` is a thin entrypoint that wires modules together. The modules live in
+`wezterm/lua/`:
+
+| File | What it does |
+| ---- | ------------ |
+| `palette.lua` | generated from `theme/palette.json` — colors |
+| `platform.lua` | renderer, Wayland, the `pop-os` SSH domain |
+| `appearance.lua` | font, window, paper background, color table, tab bar |
+| `status.lua` | the bottom status bar and its once-a-second background refresh |
+| `music.lua` | Apple Music transport + the fuzzy-search prompt (macOS) |
+| `keybinds.lua` | leader key and all keybindings |
+
+Each module returns a table with an `apply(config, ctx)` (or `setup`) function;
+`ctx` just carries `is_mac`. WezTerm only puts the config dir itself on
+`package.path`, so `wezterm.lua` prepends `lua/` and adds it to the reload watch
+list.
 
 - The paper background and the palette, plus an ANSI table where white maps to dark ink rather than paper, so TUIs that print white text stay readable. The bright colors are set equal to their normal versions, because lightening a color on a light background only costs you contrast.
 - Leader key is `Cmd+a` on macOS and `Ctrl+a` on Linux.
@@ -62,7 +84,7 @@ After that, open Neovim and run `:Lazy sync` to pull plugins.
 
 ### Neovim (`nvim/init.lua`)
 
-- One file. Options at the top, then the `archival-inks` colorscheme defined inline, then the plugin list.
+- One file. Options at the top, then the `archival-inks` colorscheme defined inline (pulling `nvim/lua/palette.lua`, the generated palette), then the plugin list.
 - The colorscheme sets `Normal` and friends to no background so the terminal's paper shows through. If your terminal background is dark, this will look wrong.
 - Plugins: lazy.nvim, fzf-lua, Mason with lspconfig, nvim-treesitter, render-markdown, blink.cmp, lualine.
 - LSP keymaps are set on attach: `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca`, `[d`, `]d`. Fuzzy finding is under `<leader>f`.
@@ -72,7 +94,7 @@ After that, open Neovim and run `:Lazy sync` to pull plugins.
 
 - Oh My Zsh with Powerlevel10k. The prompt is a single transparent line: directory, git, and the prompt character on the left; command time (only when it ran longer than 5 seconds), virtualenv, context, and the clock on the right. `TRANSIENT_PROMPT` trims old prompts after they run.
 - zsh-syntax-highlighting is themed to the same palette, so a valid command turns blue as you type it and a typo turns red and underlined before you press enter.
-- NVM is lazy loaded. `config wezterm|nvim|zsh|p10k` opens the matching file in Neovim.
+- NVM is lazy loaded. `config wezterm|nvim|zsh|p10k|theme` opens the matching file in Neovim.
 - The greeting runs `fastfetch` and picks the full or small logo based on terminal width.
 
 ### `music` (`bin/music`, macOS only)
