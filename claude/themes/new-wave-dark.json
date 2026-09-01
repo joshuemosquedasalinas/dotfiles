@@ -1,0 +1,17 @@
+{
+  "name": "New Wave Dark",
+  "base": "dark-ansi",
+  "overrides": {
+    "background": "#1c1c1c",
+    "inverseText": "#1c1c1c",
+    "userMessageBackground": "#242424",
+    "userMessageBackgroundHover": "#303030",
+    "composerSidebarBackground": "#242424",
+    "bashMessageBackgroundColor": "#242424",
+    "memoryBackgroundColor": "#242424",
+    "selectionBg": "#303030",
+    "promptBorder": "#404040",
+    "promptBorderShimmer": "#6e6e6e",
+    "rate_limit_empty": "#404040"
+  }
+}

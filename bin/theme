@@ -45,3 +45,28 @@ mkdir -p "$mode_dir"
 # Truncate-in-place (not rename) so file watchers keep the same inode.
 printf '%s\n' "$target" > "$mode_file"
 echo "theme: $target"
+
+# Point Claude Code at the matching custom theme. Best effort: it applies on the
+# next launch (or immediately via /theme). A live session may rewrite settings on
+# exit, so re-run `theme` if that reverts it.
+claude_settings="$HOME/.claude/settings.json"
+if [ -f "$claude_settings" ] && command -v python3 > /dev/null 2>&1; then
+  slug=new-wave
+  [ "$target" = "dark" ] && slug=new-wave-dark
+  python3 - "$claude_settings" "custom:$slug" <<'PY' || true
+import json, os, sys
+path, theme = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except (OSError, ValueError):
+    sys.exit(0)
+if data.get("theme") != theme:
+    data["theme"] = theme
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+PY
+fi

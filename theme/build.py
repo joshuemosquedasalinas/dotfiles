@@ -3,15 +3,20 @@
 
 Canonical source:  theme/palette.json  (two modes: "light" and "dark")
 
-Generated outputs (one pair per mode, do not hand-edit):
+Generated outputs (one per mode, do not hand-edit):
   theme/palette.light.sh    theme/palette.dark.sh      -- THEME_* vars for zsh
   wezterm/lua/palette_light.lua  wezterm/lua/palette_dark.lua
   nvim/lua/palette_light.lua     nvim/lua/palette_dark.lua
+  claude/themes/new-wave.json    claude/themes/new-wave-dark.json  -- Claude Code
 
 Hand-written shims (NOT generated, safe to edit):
   theme/palette.sh          sources the active mode's palette.<mode>.sh
   wezterm/lua/palette.lua    returns the active mode's palette_<mode>
   nvim/lua/palette.lua       returns the active mode's palette_<mode>
+
+Claude Code has no runtime shim: its custom themes ride the terminal's ANSI
+palette (base "<mode>-ansi"), so they follow WezTerm's colours, and the `theme`
+command repoints ~/.claude/settings.json at the matching one.
 
 The active mode is whatever the `theme` command last wrote to
 $XDG_CACHE_HOME/dotfiles/theme-mode (default: light).
@@ -47,6 +52,33 @@ def render_sh(mode, colors, paper):
     return "".join(lines)
 
 
+def render_claude(mode, colors, paper):
+    """A Claude Code custom theme. base "<mode>-ansi" routes every semantic colour
+    through the terminal's ANSI palette (so it tracks WezTerm, which is generated
+    from this same file). Only the chrome that ANSI can't express well — panel and
+    message backgrounds, borders, knockout text — is pinned to palette hexes."""
+    slug = "new-wave" if mode == "light" else "new-wave-dark"
+    name = "New Wave" if mode == "light" else "New Wave Dark"
+    theme = {
+        "name": name,
+        "base": f"{mode}-ansi",
+        "overrides": {
+            "background": paper["hi"],
+            "inverseText": paper["hi"],
+            "userMessageBackground": colors["surface"],
+            "userMessageBackgroundHover": colors["surface_active"],
+            "composerSidebarBackground": colors["surface"],
+            "bashMessageBackgroundColor": colors["surface"],
+            "memoryBackgroundColor": colors["surface"],
+            "selectionBg": colors["surface_active"],
+            "promptBorder": colors["divider"],
+            "promptBorderShimmer": colors["fg_faint"],
+            "rate_limit_empty": colors["divider"],
+        },
+    }
+    return slug, json.dumps(theme, indent=2) + "\n"
+
+
 def render_lua(mode, colors, paper):
     lines = [BANNER_LUA, "return {\n", f'  mode = "{mode}",\n']
     width = max(len(n) for n in colors)
@@ -68,11 +100,13 @@ def write(path, text):
 
 def main():
     modes = load()
-    print(f"theme: {SRC.relative_to(ROOT)} -> {len(modes) * 3} files")
+    print(f"theme: {SRC.relative_to(ROOT)} -> {len(modes) * 4} files")
     for mode, (colors, paper) in modes.items():
         write(ROOT / "theme" / f"palette.{mode}.sh", render_sh(mode, colors, paper))
         write(ROOT / "wezterm" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors, paper))
         write(ROOT / "nvim" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors, paper))
+        slug, body = render_claude(mode, colors, paper)
+        write(ROOT / "claude" / "themes" / f"{slug}.json", body)
 
 
 if __name__ == "__main__":
