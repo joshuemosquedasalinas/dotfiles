@@ -2,8 +2,8 @@
   "name": "New Wave Dark",
   "base": "dark-ansi",
   "overrides": {
-    "background": "#1c1c1c",
-    "inverseText": "#1c1c1c",
+    "background": "#1a1a1a",
+    "inverseText": "#1a1a1a",
     "userMessageBackground": "#242424",
     "userMessageBackgroundHover": "#303030",
     "composerSidebarBackground": "#242424",

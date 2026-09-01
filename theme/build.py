@@ -39,20 +39,17 @@ MODES = ("light", "dark")
 
 def load():
     data = json.loads(SRC.read_text())
-    return {mode: (data[mode]["colors"], data[mode]["paper"]) for mode in MODES}
+    return {mode: data[mode]["colors"] for mode in MODES}
 
 
-def render_sh(mode, colors, paper):
+def render_sh(mode, colors):
     lines = [BANNER_HASH, f"export THEME_MODE='{mode}'\n"]
     for name, hex_ in colors.items():
         lines.append(f"export THEME_{name.upper()}='{hex_}'\n")
-    lines.append(f"export THEME_PAPER_LO='{paper['lo']}'\n")
-    lines.append(f"export THEME_PAPER_HI='{paper['hi']}'\n")
-    lines.append(f"export THEME_PAPER_NOISE='{paper['noise']}'\n")
     return "".join(lines)
 
 
-def render_claude(mode, colors, paper):
+def render_claude(mode, colors):
     """A Claude Code custom theme. base "<mode>-ansi" routes every semantic colour
     through the terminal's ANSI palette (so it tracks WezTerm, which is generated
     from this same file). Only the chrome that ANSI can't express well — panel and
@@ -63,8 +60,8 @@ def render_claude(mode, colors, paper):
         "name": name,
         "base": f"{mode}-ansi",
         "overrides": {
-            "background": paper["hi"],
-            "inverseText": paper["hi"],
+            "background": colors["bg"],
+            "inverseText": colors["bg"],
             "userMessageBackground": colors["surface"],
             "userMessageBackgroundHover": colors["surface_active"],
             "composerSidebarBackground": colors["surface"],
@@ -79,15 +76,11 @@ def render_claude(mode, colors, paper):
     return slug, json.dumps(theme, indent=2) + "\n"
 
 
-def render_lua(mode, colors, paper):
+def render_lua(mode, colors):
     lines = [BANNER_LUA, "return {\n", f'  mode = "{mode}",\n']
     width = max(len(n) for n in colors)
     for name, hex_ in colors.items():
         lines.append(f'  {name.ljust(width)} = "{hex_}",\n')
-    lines.append(
-        f'  paper = {{ lo = "{paper["lo"]}", hi = "{paper["hi"]}", '
-        f'noise = {paper["noise"]} }},\n'
-    )
     lines.append("}\n")
     return "".join(lines)
 
@@ -101,11 +94,11 @@ def write(path, text):
 def main():
     modes = load()
     print(f"theme: {SRC.relative_to(ROOT)} -> {len(modes) * 4} files")
-    for mode, (colors, paper) in modes.items():
-        write(ROOT / "theme" / f"palette.{mode}.sh", render_sh(mode, colors, paper))
-        write(ROOT / "wezterm" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors, paper))
-        write(ROOT / "nvim" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors, paper))
-        slug, body = render_claude(mode, colors, paper)
+    for mode, colors in modes.items():
+        write(ROOT / "theme" / f"palette.{mode}.sh", render_sh(mode, colors))
+        write(ROOT / "wezterm" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors))
+        write(ROOT / "nvim" / "lua" / f"palette_{mode}.lua", render_lua(mode, colors))
+        slug, body = render_claude(mode, colors)
         write(ROOT / "claude" / "themes" / f"{slug}.json", body)
 
 

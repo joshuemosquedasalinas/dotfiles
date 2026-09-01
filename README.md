@@ -3,10 +3,10 @@
 My Neovim, WezTerm, and zsh setup. Runs on macOS and on Linux (Pop!_OS).
 
 Everything shares one color theme I call New Wave, in a light and a dark mode.
-The terminal background is a barely-there gradient with a bit of per pixel noise
-so it reads a little like paper (near white in light mode, near black in dark),
-and the foreground colors stay fairly muted so they sit calmly on it. The palette
-lives in one file, `theme/palette.json`, with a `light` and a `dark` block.
+The backgrounds are living neutrals rather than pure black or white (`#f4f4f4` in
+light mode, `#1a1a1a` in dark) to cut halation and glare, and the foreground
+colors stay fairly muted so they sit calmly on them. The palette lives in one
+file, `theme/palette.json`, with a `light` and a `dark` block.
 `theme/build.py` renders each mode into the forms every tool needs
 (`theme/palette.{light,dark}.sh` for zsh, `wezterm/lua/palette_{light,dark}.lua`
 and `nvim/lua/palette_{light,dark}.lua` for the Lua configs, and
@@ -83,7 +83,7 @@ After that, open Neovim and run `:Lazy sync` to pull plugins.
 | ---- | ------------ |
 | `palette.lua` | shim that returns `palette_light`/`palette_dark` for the active mode |
 | `platform.lua` | renderer, Wayland, the `pop-os` SSH domain |
-| `appearance.lua` | font, window, paper background, color table, tab bar |
+| `appearance.lua` | font, window, background, color table, tab bar |
 | `status.lua` | the bottom status bar and its once-a-second background refresh |
 | `music.lua` | Apple Music transport + the fuzzy-search prompt (macOS) |
 | `keybinds.lua` | leader key and all keybindings |
@@ -93,7 +93,7 @@ Each module returns a table with an `apply(config, ctx)` (or `setup`) function;
 `package.path`, so `wezterm.lua` prepends `lua/` and adds it to the reload watch
 list.
 
-- The paper background and the palette, plus an ANSI table where ANSI 0/7/15 (black and white) all map to the mode's primary text color, so TUIs that print black text on dark mode or white text on light mode stay readable. The bright colors are set equal to their normal versions. Switching mode with `theme` rewrites the mode marker, which is on WezTerm's reload watch list, so the whole config re-reads.
+- The flat `bg` background and the palette, plus an ANSI table where ANSI 0/7/15 (black and white) all map to the mode's primary text color, so TUIs that print black text on dark mode or white text on light mode stay readable. The bright colors are set equal to their normal versions. Switching mode with `theme` rewrites the mode marker, which is on WezTerm's reload watch list, so the whole config re-reads.
 - Leader key is `Cmd+a` on macOS and `Ctrl+a` on Linux.
 - Under the leader: `[` and `]` to split, arrow keys to move between panes, `h j k l` to resize, `x` to close.
 - `Leader s` opens a small picker for a split that is already SSH'd into my `pop-os` box. The host is hardcoded, so change or delete that block if you are not me.
@@ -104,7 +104,7 @@ list.
 ### Neovim (`nvim/init.lua`)
 
 - One file. Options at the top, then the `new-wave` colorscheme defined inline (pulling `nvim/lua/palette.lua`, the active-mode palette), then the plugin list.
-- The colorscheme sets `Normal` and friends to no background so the terminal's paper shows through, and picks `background=light`/`dark` from the palette's mode. A libuv watcher on the mode marker re-applies the colorscheme and statusline live when `theme` flips it.
+- The colorscheme sets `Normal` and friends to no background so the terminal's background shows through, and picks `background=light`/`dark` from the palette's mode. A libuv watcher on the mode marker re-applies the colorscheme and statusline live when `theme` flips it.
 - Plugins: lazy.nvim, fzf-lua, Mason with lspconfig, nvim-treesitter, render-markdown, blink.cmp, lualine.
 - LSP keymaps are set on attach: `gd`, `gr`, `K`, `<leader>rn`, `<leader>ca`, `[d`, `]d`. Fuzzy finding is under `<leader>f`.
 - lualine uses the same palette. The mode block on the left is the one place a saturated color sits as a solid fill.
@@ -168,7 +168,7 @@ re-run `theme` if that happens.
 
 ## Rough edges
 
-- Neovim leans on the terminal for the actual background (it sets no `Normal` bg), so the paper look only holds together inside WezTerm with this config. In another terminal, set that terminal's background to match the active mode's `paper` color.
+- Neovim leans on the terminal for the actual background (it sets no `Normal` bg), so the look only holds together inside WezTerm with this config. In another terminal, set that terminal's background to match the active mode's `bg` color.
 - A `theme` switch re-themes every WezTerm window, every Neovim watching the marker, and the one zsh shell it ran in. Other already-open shells keep their old highlighting until you run `zs` (or `theme <same-mode>`) in them; new shells and windows are fine.
 - The `pop-os` SSH domain and the split picker are specific to my network.
 - The zsh configs are not symlinked by `install.sh`.
