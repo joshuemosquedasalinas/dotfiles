@@ -23,9 +23,15 @@ ln -sfn "$DOTFILES/nvim/lua"             ~/.config/nvim/lua
 ln -sf  "$DOTFILES/wezterm/wezterm.lua"  ~/.config/wezterm/wezterm.lua
 ln -sfn "$DOTFILES/wezterm/lua"          ~/.config/wezterm/lua
 
-# music: fuzzy Apple Music control (macOS only, no-ops elsewhere)
+# CLIs: music (fuzzy Apple Music control, macOS only) + theme (light/dark switch)
 mkdir -p ~/.local/bin
 ln -sf "$DOTFILES/bin/music"            ~/.local/bin/music
+ln -sf "$DOTFILES/bin/theme"            ~/.local/bin/theme
+
+# Seed the theme mode marker so the palette shims and file watchers have a target.
+THEME_MODE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles"
+mkdir -p "$THEME_MODE_DIR"
+[ -f "$THEME_MODE_DIR/theme-mode" ] || echo light > "$THEME_MODE_DIR/theme-mode"
 
 # Note: zsh/.zshrc and zsh/.p10k.zsh are symlinked by hand on the main
 # machine (~/.zshrc -> this repo) but intentionally left out here.

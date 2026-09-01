@@ -37,8 +37,9 @@
   # Zsh >= 5.1 is required.
   [[ $ZSH_VERSION == (5.<1->*|<6->.*) ]] || return
 
-  # Prompt colors — "Deep Archival Inks" palette, generated from
-  # ~/dotfiles/theme/palette.json (theme/build.py).
+  # Prompt colors — "New Wave" palette (light/dark), generated from
+  # ~/dotfiles/theme/palette.json (theme/build.py). `theme` + `p10k reload`
+  # re-reads this for the new mode.
   source ~/dotfiles/theme/palette.sh
   local fg_muted=$THEME_FG_MUTED
   local red=$THEME_RED

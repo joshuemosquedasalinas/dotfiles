@@ -1,26 +1,51 @@
 {
-  "_comment": "Deep Archival Inks — the one place colors are defined. Edit this file, then run theme/build.py (install.sh does it for you). Everything under theme/palette.sh, wezterm/lua/palette.lua, and nvim/lua/palette.lua is generated and will be overwritten.",
+  "_comment": "New Wave — the one place colors are defined. Two modes: light and dark. Edit this file, then run theme/build.py (install.sh does it for you). Everything under theme/palette.*.sh, wezterm/lua/palette_*.lua, and nvim/lua/palette_*.lua is generated and will be overwritten. palette.sh and palette.lua are hand-written shims that pick a mode at runtime — switch with the `theme` command.",
 
-  "colors": {
-    "fg":             "#1a1a1a",
-    "fg_muted":       "#404040",
-    "fg_faint":       "#595959",
-    "divider":        "#a3a3a3",
-    "surface":        "#e4e4e4",
-    "surface_active": "#ececec",
+  "light": {
+    "colors": {
+      "fg":             "#1a1a1a",
+      "fg_muted":       "#666666",
+      "fg_faint":       "#999999",
+      "divider":        "#bdbdbd",
+      "surface":        "#ebebeb",
+      "surface_active": "#cecece",
 
-    "red":     "#8f2727",
-    "green":   "#225e31",
-    "yellow":  "#705214",
-    "blue":    "#204a87",
-    "magenta": "#752c61",
-    "cyan":    "#175e5e",
-    "orange":  "#9c4314"
+      "red":     "#cc3f3f",
+      "green":   "#5ca85c",
+      "yellow":  "#a8922e",
+      "blue":    "#3d6fd4",
+      "magenta": "#a95cb8",
+      "cyan":    "#3d9a9a",
+      "orange":  "#c47a3a"
+    },
+    "paper": {
+      "lo":    "#f2f2f2",
+      "hi":    "#f6f6f6",
+      "noise": 200
+    }
   },
 
-  "paper": {
-    "lo":    "#d2d2d2",
-    "hi":    "#d6d6d6",
-    "noise": 200
+  "dark": {
+    "colors": {
+      "fg":             "#e8e8e8",
+      "fg_muted":       "#999999",
+      "fg_faint":       "#6e6e6e",
+      "divider":        "#404040",
+      "surface":        "#242424",
+      "surface_active": "#303030",
+
+      "red":     "#e06060",
+      "green":   "#7fd47f",
+      "yellow":  "#e6d06a",
+      "blue":    "#4c7ad4",
+      "magenta": "#d48ad4",
+      "cyan":    "#6dcaca",
+      "orange":  "#f0a86a"
+    },
+    "paper": {
+      "lo":    "#181818",
+      "hi":    "#1c1c1c",
+      "noise": 200
+    }
   }
 }

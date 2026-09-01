@@ -47,9 +47,10 @@ function M.apply(config, ctx)
     border_bottom_color = pal.paper.hi,
   }
 
-  -- On a light background "white" and "bright white" foreground text must
-  -- render as ink, not paper — otherwise apps that colour text with ANSI 7/15
-  -- (e.g. the agy TUI) are unreadable. Hues stay saturated; only the greys move.
+  -- ANSI 0/7/15 (black + white + bright white) all map to the primary text
+  -- colour: on light mode that keeps "white" text as ink, on dark mode it keeps
+  -- "black" text legible — otherwise TUIs that colour text with those slots are
+  -- unreadable. Hues stay saturated; only the greys move with the mode.
   local ansi = {
     pal.fg,      -- 0 black
     pal.red,     -- 1 red

@@ -18,12 +18,18 @@ vim.opt.clipboard = "unnamedplus"
 vim.opt.scrolloff = 8          
 vim.opt.undofile = true        
 vim.opt.updatetime = 250       
--- Colorscheme: "Deep Archival Inks" — dark ink on the terminal's paper background.
--- Palette is generated from ~/dotfiles/theme/palette.json (see theme/build.py);
--- install.sh symlinks it to ~/.config/nvim/lua/palette.lua.
-vim.opt.background = "light"
-local pal = require("palette")
-local theme_groups = {
+-- Colorscheme: "New Wave" — reads nvim/lua/palette.lua, the light/dark shim
+-- generated from ~/dotfiles/theme/palette.json (see theme/build.py). The `theme`
+-- command flips the mode; the watcher near the bottom re-applies it live.
+local function load_palette()
+  for _, m in ipairs({ "palette", "palette_light", "palette_dark" }) do
+    package.loaded[m] = nil
+  end
+  return require("palette")
+end
+
+local function theme_groups(pal)
+  return {
   -- Base / UI
   Normal = { fg = pal.fg, bg = "NONE" },
   NormalNC = { fg = pal.fg, bg = "NONE" },
@@ -178,20 +184,92 @@ local theme_groups = {
   SpellCap = { undercurl = true, sp = pal.yellow },
   SpellRare = { undercurl = true, sp = pal.cyan },
   SpellLocal = { undercurl = true, sp = pal.blue },
-}
+  }
+end
+
+-- "New Wave" statusline. Built here (not in the lualine plugin block) so the
+-- live theme watcher can rebuild it on a mode switch.
+local function lualine_opts(pal)
+  local mode_theme = {
+    normal = {
+      a = { bg = pal.blue, fg = pal.surface, gui = "bold" },
+      b = { bg = pal.surface, fg = pal.fg_muted, gui = "none" },
+      c = { bg = pal.surface_active, fg = pal.fg, gui = "none" },
+    },
+    insert = { a = { bg = pal.green, fg = pal.surface, gui = "bold" } },
+    visual = { a = { bg = pal.yellow, fg = pal.fg, gui = "bold" } },
+    replace = { a = { bg = pal.red, fg = pal.surface, gui = "bold" } },
+    command = { a = { bg = pal.magenta, fg = pal.surface, gui = "bold" } },
+    inactive = {
+      a = { bg = pal.divider, fg = pal.fg_muted },
+      b = { bg = pal.surface, fg = pal.fg_faint },
+      c = { bg = pal.surface_active, fg = pal.fg_muted },
+    },
+  }
+  return {
+    options = {
+      theme = mode_theme,
+      icons_enabled = true,
+      section_separators = "",
+      component_separators = "|",
+      globalstatus = true,
+    },
+    sections = {
+      lualine_a = { "mode" },
+      lualine_b = { "branch", "diff" },
+      lualine_c = { { "filename", path = 1 } },
+      lualine_x = { "diagnostics", "filetype" },
+      lualine_y = { "progress" },
+      lualine_z = { "location" },
+    },
+  }
+end
+
 local function apply_theme()
-  vim.g.colors_name = "archival-inks"
-  for group, spec in pairs(theme_groups) do
+  local pal = load_palette()
+  vim.opt.background = pal.mode == "dark" and "dark" or "light"
+  vim.g.colors_name = "new-wave"
+  for group, spec in pairs(theme_groups(pal)) do
     vim.api.nvim_set_hl(0, group, spec)
+  end
+  local ok, lualine = pcall(require, "lualine")
+  if ok then
+    lualine.setup(lualine_opts(pal))
   end
 end
 apply_theme()
 -- Re-apply if another plugin or command loads a colorscheme.
 vim.api.nvim_create_autocmd("ColorScheme", {
   callback = function(ev)
-    if ev.match ~= "archival-inks" then apply_theme() end
+    if ev.match ~= "new-wave" then apply_theme() end
   end,
 })
+
+-- Live theme switching: the `theme` command rewrites this marker file; re-apply
+-- the colorscheme (and statusline) when it changes.
+do
+  local cache = vim.env.XDG_CACHE_HOME
+  if not cache or cache == "" then
+    cache = vim.fn.expand("~/.cache")
+  end
+  local mode_file = cache .. "/dotfiles/theme-mode"
+  local uv = vim.uv or vim.loop
+  if uv.fs_stat(mode_file) then
+    local watcher = uv.new_fs_event()
+    if watcher then
+      local function arm()
+        watcher:start(mode_file, {}, vim.schedule_wrap(function(err)
+          if err then return end
+          apply_theme()
+          -- Re-arm in case the write replaced the file rather than truncating it.
+          pcall(function() watcher:stop() end)
+          arm()
+        end))
+      end
+      arm()
+    end
+  end
+end
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -312,40 +390,9 @@ require("lazy").setup({
     "nvim-lualine/lualine.nvim",
     dependencies = { "nvim-tree/nvim-web-devicons" }, 
     config = function()
-      -- "Deep Archival Inks" statusline — palette from ~/dotfiles/theme/palette.json
-      local archival = {
-        normal = {
-          a = { bg = pal.blue, fg = pal.surface, gui = "bold" },
-          b = { bg = pal.surface, fg = pal.fg_muted, gui = "none" },
-          c = { bg = pal.surface_active, fg = pal.fg, gui = "none" },
-        },
-        insert = { a = { bg = pal.green, fg = pal.surface, gui = "bold" } },
-        visual = { a = { bg = pal.yellow, fg = pal.fg, gui = "bold" } },
-        replace = { a = { bg = pal.red, fg = pal.surface, gui = "bold" } },
-        command = { a = { bg = pal.magenta, fg = pal.surface, gui = "bold" } },
-        inactive = {
-          a = { bg = pal.divider, fg = pal.fg_muted },
-          b = { bg = pal.surface, fg = pal.fg_faint },
-          c = { bg = pal.surface_active, fg = pal.fg_muted },
-        },
-      }
-      require("lualine").setup({
-        options = {
-          theme = archival,
-          icons_enabled = true,
-          section_separators = "",
-          component_separators = "|",
-          globalstatus = true,
-        },
-        sections = {
-          lualine_a = { "mode" },
-          lualine_b = { "branch", "diff" },
-          lualine_c = { { "filename", path = 1 } },
-          lualine_x = { "diagnostics", "filetype" },
-          lualine_y = { "progress" },
-          lualine_z = { "location" },
-        },
-      })
+      -- Palette + sections come from lualine_opts() at the top of this file, so
+      -- the live theme watcher can rebuild the statusline on a mode switch.
+      require("lualine").setup(lualine_opts(load_palette()))
     end,
   },
 })

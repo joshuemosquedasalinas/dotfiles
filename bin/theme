@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Switch the shared "New Wave" colour theme between light and dark.
+#
+# Writes the mode marker that every tool's palette shim reads:
+#   $XDG_CACHE_HOME/dotfiles/theme-mode   (default ~/.cache/dotfiles/theme-mode)
+#
+# WezTerm watches that file and reloads automatically. Neovim watches it and
+# re-applies its colorscheme live. For the current zsh shell, the `theme` shell
+# function in zsh/.zshrc re-sources the palette after calling this script.
+#
+#   theme            print the current mode
+#   theme light      switch to light
+#   theme dark       switch to dark
+#   theme toggle     flip to the other mode
+set -euo pipefail
+
+mode_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles"
+mode_file="$mode_dir/theme-mode"
+
+current() {
+  local m=light
+  if [ -r "$mode_file" ]; then
+    read -r m < "$mode_file" || m=light
+  fi
+  [ "$m" = "dark" ] && echo dark || echo light
+}
+
+target="${1:-status}"
+case "$target" in
+  status)
+    current
+    exit 0
+    ;;
+  toggle)
+    [ "$(current)" = "dark" ] && target=light || target=dark
+    ;;
+  light | dark) ;;
+  *)
+    echo "usage: theme [light|dark|toggle|status]" >&2
+    exit 2
+    ;;
+esac
+
+mkdir -p "$mode_dir"
+# Truncate-in-place (not rename) so file watchers keep the same inode.
+printf '%s\n' "$target" > "$mode_file"
+echo "theme: $target"
