@@ -2,7 +2,7 @@
 -- This file just wires the modules together; the substance lives in lua/.
 --   lua/palette.lua      generated from theme/palette.json — colours
 --   lua/platform.lua     renderer, Wayland, SSH domains
---   lua/appearance.lua   font, window, paper background, colour table, tab bar
+--   lua/appearance.lua   font, window, background, colour table, tab bar
 --   lua/status.lua       the bottom status bar + its background refresh
 --   lua/music.lua        Apple Music transport + fuzzy-search prompt (macOS)
 --   lua/keybinds.lua     leader key and all keybindings

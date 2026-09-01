@@ -1,5 +1,5 @@
--- Everything visual: font, window, the paper background, the colour table, and
--- the (mostly hidden) tab bar. Colours come from the generated palette.
+-- Everything visual: font, window, the colour table, and the (mostly hidden)
+-- tab bar. Colours come from the generated palette.
 local wezterm = require("wezterm")
 local pal = require("palette")
 
@@ -11,22 +11,6 @@ function M.apply(config, ctx)
   config.font = wezterm.font("IBM Plex Mono", { weight = "Medium" })
   config.font_size = ctx.is_mac and 13.0 or 12.0
   config.line_height = 1.1
-
-  -- Paper-like background: a barely-there vertical gradient with per-pixel noise.
-  config.window_background_opacity = 1.0
-  config.background = {
-    {
-      source = {
-        Gradient = {
-          colors = { pal.paper.lo, pal.paper.hi },
-          orientation = "Vertical",
-          noise = pal.paper.noise,
-        },
-      },
-      width = "100%",
-      height = "100%",
-    },
-  }
 
   config.window_decorations = ctx.is_mac and "INTEGRATED_BUTTONS | RESIZE" or "RESIZE"
   -- Inactive panes recede: pigments drop to half saturation (accents go muddy)
@@ -44,7 +28,7 @@ function M.apply(config, ctx)
   }
   config.window_frame = {
     border_bottom_height = "0.5cell",
-    border_bottom_color = pal.paper.hi,
+    border_bottom_color = pal.bg,
   }
 
   -- ANSI 0/7/15 (black + white + bright white) all map to the primary text
@@ -72,6 +56,7 @@ function M.apply(config, ctx)
     pal.fg,       -- 15 bright white -> normal ink
   }
   config.colors = {
+    background = pal.bg,
     foreground = pal.fg,
     cursor_bg = pal.orange,
     cursor_fg = pal.surface,
@@ -85,7 +70,7 @@ function M.apply(config, ctx)
     tab_bar = { background = "rgba(0,0,0,0)" },
   }
 
-  -- Command palette / InputSelector overlay styling (fits the paper theme).
+  -- Command palette / InputSelector overlay styling (fits the theme).
   config.command_palette_bg_color = pal.surface
   config.command_palette_fg_color = pal.fg
   config.command_palette_font_size = ctx.is_mac and 13.0 or 12.0
