@@ -30,13 +30,26 @@ _theme_apply() {
 }
 _theme_apply
 
-# theme [light|dark|toggle|status] — flip the shared light/dark theme.
+# Keep every open shell in step with the marker: if the mode changed underneath
+# us (a `theme` call in another shell, or WezTerm following the OS appearance),
+# re-theme on the next prompt. THEME_MODE is exported by theme/palette.<mode>.sh.
+_theme_sync_precmd() {
+  local f="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/theme-mode" m
+  [ -r "$f" ] && IFS= read -r m < "$f" 2>/dev/null
+  [[ -n "$m" && "$m" != "$THEME_MODE" ]] || return
+  _theme_apply
+  (( ${+functions[p10k]} )) && p10k reload
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _theme_sync_precmd
+
+# theme [light|dark|toggle|system|status] — flip the shared light/dark theme.
 # The bin/theme worker writes the marker (WezTerm + Neovim pick it up on their
 # own); here we also re-theme the current shell and redraw the prompt.
 theme() {
   command theme "$@" || return
   case "${1:-status}" in
-    light | dark | toggle)
+    light | dark | toggle | system)
       _theme_apply
       (( ${+functions[p10k]} )) && p10k reload
       ;;

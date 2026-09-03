@@ -1,59 +1,67 @@
 #!/usr/bin/env bash
 # Switch the shared "New Wave" colour theme between light and dark.
 #
-# Writes the mode marker that every tool's palette shim reads:
-#   $XDG_CACHE_HOME/dotfiles/theme-mode   (default ~/.cache/dotfiles/theme-mode)
+# Two markers under $XDG_CACHE_HOME/dotfiles/ (default ~/.cache/dotfiles/):
+#   theme-mode     the resolved mode, "light" or "dark". Every tool's palette
+#                  shim reads this; WezTerm and Neovim watch it and reload.
+#   theme-source   "manual" (pinned) or "system" (follow the OS appearance).
 #
-# WezTerm watches that file and reloads automatically. Neovim watches it and
-# re-applies its colorscheme live. For the current zsh shell, the `theme` shell
-# function in zsh/.zshrc re-sources the palette after calling this script.
-#
-#   theme            print the current mode
-#   theme light      switch to light
-#   theme dark       switch to dark
-#   theme toggle     flip to the other mode
+#   theme            print the current mode and source, e.g. "dark (system)"
+#   theme light      pin to light
+#   theme dark       pin to dark
+#   theme toggle     flip to the other mode (and pin)
+#   theme system     follow the OS light/dark setting from now on (macOS)
+#   theme --sync     re-resolve from the OS when source is "system"; no-op
+#                    otherwise. WezTerm runs this when the OS appearance changes.
 set -euo pipefail
 
 mode_dir="${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles"
 mode_file="$mode_dir/theme-mode"
+source_file="$mode_dir/theme-source"
 
-current() {
-  local m=light
-  if [ -r "$mode_file" ]; then
-    read -r m < "$mode_file" || m=light
-  fi
-  [ "$m" = "dark" ] && echo dark || echo light
+# First line of $1, or $2 if unreadable/empty.
+read_line() {
+  local v=$2
+  [ -r "$1" ] && read -r v < "$1" 2>/dev/null || true
+  printf '%s\n' "${v:-$2}"
 }
 
-target="${1:-status}"
-case "$target" in
-  status)
-    current
-    exit 0
-    ;;
-  toggle)
-    [ "$(current)" = "dark" ] && target=light || target=dark
-    ;;
-  light | dark) ;;
-  *)
-    echo "usage: theme [light|dark|toggle|status]" >&2
-    exit 2
-    ;;
-esac
+current_mode() {
+  [ "$(read_line "$mode_file" light)" = dark ] && echo dark || echo light
+}
 
-mkdir -p "$mode_dir"
-# Truncate-in-place (not rename) so file watchers keep the same inode.
-printf '%s\n' "$target" > "$mode_file"
-echo "theme: $target"
+current_source() {
+  [ "$(read_line "$source_file" manual)" = system ] && echo system || echo manual
+}
 
-# Point Claude Code at the matching custom theme. Best effort: it applies on the
-# next launch (or immediately via /theme). A live session may rewrite settings on
-# exit, so re-run `theme` if that reverts it.
-claude_settings="$HOME/.claude/settings.json"
-if [ -f "$claude_settings" ] && command -v python3 > /dev/null 2>&1; then
-  slug=new-wave
-  [ "$target" = "dark" ] && slug=new-wave-dark
-  python3 - "$claude_settings" "custom:$slug" <<'PY' || true
+# Resolve the OS appearance to light/dark. Empty if this OS isn't supported.
+os_mode() {
+  case "$(uname)" in
+    Darwin)
+      [ "$(defaults read -g AppleInterfaceStyle 2>/dev/null || true)" = Dark ] \
+        && echo dark || echo light
+      ;;
+    *) : ;; # TODO: Linux/GNOME via `gsettings get org.gnome.desktop.interface color-scheme`
+  esac
+}
+
+set_source() {
+  mkdir -p "$mode_dir"
+  printf '%s\n' "$1" > "$source_file"
+}
+
+# Write the mode marker and repoint Claude Code. Does not touch theme-source.
+apply_mode() {
+  local target=$1
+  mkdir -p "$mode_dir"
+  # Truncate-in-place (not rename) so file watchers keep the same inode.
+  printf '%s\n' "$target" > "$mode_file"
+
+  local claude_settings="$HOME/.claude/settings.json"
+  if [ -f "$claude_settings" ] && command -v python3 > /dev/null 2>&1; then
+    local slug=new-wave
+    [ "$target" = dark ] && slug=new-wave-dark
+    python3 - "$claude_settings" "custom:$slug" <<'PY' || true
 import json, os, sys
 path, theme = sys.argv[1], sys.argv[2]
 try:
@@ -69,4 +77,45 @@ if data.get("theme") != theme:
         f.write("\n")
     os.replace(tmp, path)
 PY
-fi
+  fi
+}
+
+target="${1:-status}"
+case "$target" in
+  status)
+    echo "$(current_mode) ($(current_source))"
+    exit 0
+    ;;
+  --sync)
+    [ "$(current_source)" = system ] || exit 0
+    os=$(os_mode)
+    [ -n "$os" ] || exit 0
+    [ "$os" = "$(current_mode)" ] && exit 0
+    apply_mode "$os"
+    echo "theme: $os (system)"
+    exit 0
+    ;;
+  toggle)
+    [ "$(current_mode)" = dark ] && target=light || target=dark
+    set_source manual
+    ;;
+  light | dark)
+    set_source manual
+    ;;
+  system)
+    set_source system
+    os=$(os_mode)
+    if [ -z "$os" ]; then
+      echo "theme: now following the system, but this OS isn't supported yet" >&2
+      exit 0
+    fi
+    target=$os
+    ;;
+  *)
+    echo "usage: theme [light|dark|toggle|system|status]" >&2
+    exit 2
+    ;;
+esac
+
+apply_mode "$target"
+echo "theme: $target ($(current_source))"
