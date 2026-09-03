@@ -11,7 +11,8 @@ All components share a unified dual-mode palette (`New Wave`) defined in `theme/
   - Zsh shell variables (`theme/palette.{light,dark}.sh`)
   - Lua tables for Neovim and WezTerm (`*/lua/palette_{light,dark}.lua`)
   - Claude Code themes (`claude/themes/new-wave{,-dark}.json`)
-- **Runtime Mode Switching**: `theme` writes the active state to `$XDG_CACHE_HOME/dotfiles/theme-mode`. WezTerm, Neovim (via libuv file watcher), and Zsh dynamically reload without restarting.
+- **Runtime Mode Switching**: `theme` writes the resolved mode to `$XDG_CACHE_HOME/dotfiles/theme-mode`. WezTerm, Neovim (via libuv file watcher), and Zsh (a `precmd` hook) dynamically reload without restarting.
+- **Follow the OS**: a second marker, `theme-source`, is `manual` (pinned) or `system`. In `system` mode WezTerm notices macOS light/dark changes (it reloads its config on appearance change) and runs `theme --sync`, which rewrites `theme-mode` so Neovim, Zsh and Claude Code follow. `theme light` / `dark` / `toggle` set `manual` and stop following. If no WezTerm window is open the sync lands the next time one opens.
 
 ### Semantic Color Mapping
 
@@ -80,10 +81,11 @@ Post-installation steps:
 
 ### Theme Manager (`theme`)
 ```bash
-theme            # Display active mode
-theme light      # Set light mode
-theme dark       # Set dark mode
-theme toggle     # Toggle between modes
+theme            # Display current mode and source, e.g. "dark (system)"
+theme light      # Pin to light
+theme dark       # Pin to dark
+theme toggle     # Flip to the other mode (and pin)
+theme system     # Follow the macOS light/dark setting from now on
 ```
 
 ### Apple Music Controller (`music`, macOS only)
@@ -100,5 +102,5 @@ music --reindex            # Rebuild local cache (~/.cache/music/index.tsv)
 ## Configuration Notes
 
 - **Terminal Background**: Neovim leaves `Normal` background transparent; colorscheme contrast depends on terminal background rendering.
-- **Multi-Shell Sync**: Running `theme` reloads the active shell and GUI instances immediately. Secondary open shells update on subsequent commands or via `zs`.
+- **Multi-Shell Sync**: Running `theme` reloads the active shell and GUI instances immediately. Every other open shell re-themes on its next prompt (a `precmd` hook that compares `theme-mode` to the shell's `THEME_MODE`).
 - **SSH Domains**: WezTerm includes pre-configured SSH domains for `pop-os` reachable via Tailscale/local network.
